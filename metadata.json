@@ -1,8 +1,8 @@
 {
-  "name": "NOVA AI Assistant",
-  "description": "NOVA is a professional Hindi-speaking AI assistant designed for computer task automation and system monitoring simulation.",
   "requestFramePermissions": [
     "camera",
     "microphone"
-  ]
+  ],
+  "name": "",
+  "description": ""
 }

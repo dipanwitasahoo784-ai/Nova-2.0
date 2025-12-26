@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect } from 'react';
 import { AssistantState, Emotion } from '../types';
 
@@ -10,6 +11,7 @@ interface NovaVisualizerProps {
 
 const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAnalyser, outputAnalyser }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<number>(0);
   const particles = useRef<Array<{ x: number, y: number, angle: number, speed: number, size: number, color: string }>>([]);
 
@@ -21,7 +23,6 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
     IDLE: { r: 113, g: 113, b: 122 }     // NEUTRAL
   };
 
-  // Emotional modifiers (color tint and animation factors)
   const EMOTION_CONFIG: Record<Emotion, { r: number, g: number, b: number, speed: number, intensity: number, jitter: number }> = {
     neutral:    { r: 0,   g: 0,   b: 0,   speed: 1.0, intensity: 1.0, jitter: 0 },
     happy:      { r: 255, g: 215, b: 0,   speed: 1.8, intensity: 1.5, jitter: 1 },
@@ -55,11 +56,9 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
     const centerX = width / 2;
     const centerY = height / 2;
     
-    // Calculate blended color based on State and Emotion
     const base = STATE_THEME[state] || STATE_THEME.IDLE;
     const modifier = EMOTION_CONFIG[emotion] || EMOTION_CONFIG.neutral;
     
-    // Blend 70% state color, 30% emotion color for nuanced feedback
     const r = Math.round(base.r * 0.7 + modifier.r * 0.3);
     const g = Math.round(base.g * 0.7 + modifier.g * 0.3);
     const b = Math.round(base.b * 0.7 + modifier.b * 0.3);
@@ -82,9 +81,12 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
       volume = audioData.reduce((a, b) => a + b) / audioData.length;
     }
 
+    // Dynamic Scale Factor based on canvas size vs design resolution (800px)
+    const scale = width / 800;
+
     // 1. EMOTIONAL GLOW
-    const baseGlow = 180 + (volume * 1.5 * modifier.intensity);
-    const glowRadius = baseGlow + (Math.sin(time * 3 * modifier.speed) * 20);
+    const baseGlow = (180 + (volume * 1.5 * modifier.intensity)) * scale;
+    const glowRadius = baseGlow + (Math.sin(time * 3 * modifier.speed) * 20 * scale);
     const glowGrad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, glowRadius);
     glowGrad.addColorStop(0, `${colorStr} 0.4)`);
     glowGrad.addColorStop(0.7, `${colorStr} 0.05)`);
@@ -95,17 +97,17 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
     // 2. DATA RINGS
     const ringCount = 3;
     for (let j = 0; j < ringCount; j++) {
-      const ringRadius = 110 + (j * 45) + (volume * 0.3 * modifier.intensity);
+      const ringRadius = (110 + (j * 45) + (volume * 0.3 * modifier.intensity)) * scale;
       const ringRotation = time * (0.6 * (j + 1)) * modifier.speed * (state === 'IDLE' ? 1 : 2.5);
       
       ctx.beginPath();
-      ctx.lineWidth = 1.5 + (j * 0.5);
+      ctx.lineWidth = (1.5 + (j * 0.5)) * scale;
       ctx.strokeStyle = `${colorStr} ${0.1 + (j * 0.1) * modifier.intensity})`;
       
-      const jitterAmount = modifier.jitter * (Math.random() - 0.5);
+      const jitterAmount = modifier.jitter * (Math.random() - 0.5) * scale;
       
       for (let a = 0; a < Math.PI * 2; a += 0.15) {
-        const offset = Math.sin(a * 4 + time * 2) * (modifier.jitter * 2);
+        const offset = Math.sin(a * 4 + time * 2) * (modifier.jitter * 2) * scale;
         const x = centerX + Math.cos(a + ringRotation) * (ringRadius + offset);
         const y = centerY + Math.sin(a + ringRotation) * (ringRadius + offset);
         
@@ -118,12 +120,11 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
       ctx.stroke();
     }
 
-    // 3. THE CORE (Emotional Pulse)
-    const corePulse = Math.sin(time * 4 * modifier.speed) * 5;
-    const coreRadius = 75 + (volume * modifier.intensity) + corePulse;
+    // 3. THE CORE
+    const corePulse = Math.sin(time * 4 * modifier.speed) * 5 * scale;
+    const coreRadius = (75 + (volume * modifier.intensity) + corePulse) * scale;
     
-    // Enhanced Glow for active emotions
-    ctx.shadowBlur = (state === 'IDLE' ? 20 : 60 + (volume * 0.5)) * modifier.intensity;
+    ctx.shadowBlur = (state === 'IDLE' ? 20 : 60 + (volume * 0.5)) * modifier.intensity * scale;
     ctx.shadowColor = `${colorStr} 0.8)`;
     
     const coreGrad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, coreRadius);
@@ -132,7 +133,7 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
     coreGrad.addColorStop(1, `${colorStr} 0.5)`);
     
     ctx.beginPath();
-    ctx.arc(centerX + (Math.random() - 0.5) * modifier.jitter, centerY + (Math.random() - 0.5) * modifier.jitter, coreRadius, 0, Math.PI * 2);
+    ctx.arc(centerX + (Math.random() - 0.5) * modifier.jitter * scale, centerY + (Math.random() - 0.5) * modifier.jitter * scale, coreRadius, 0, Math.PI * 2);
     ctx.fillStyle = coreGrad;
     ctx.fill();
     ctx.shadowBlur = 0;
@@ -141,18 +142,15 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
     if (state !== 'IDLE' && audioData.length > 0) {
       const barCount = 180;
       const step = Math.floor(audioData.length / barCount);
-      
-      ctx.lineWidth = 2.5;
-      ctx.lineCap = 'round';
+      ctx.lineWidth = 2.5 * scale;
       
       for (let i = 0; i < barCount; i++) {
         const angle = (i / barCount) * Math.PI * 2;
         const val = audioData[i * step] || 0;
-        const barHeight = (val / 255) * 160 * modifier.intensity;
+        const barHeight = (val / 255) * 160 * modifier.intensity * scale;
+        const localJitter = (Math.random() - 0.5) * modifier.jitter * (val / 100) * scale;
         
-        const localJitter = (Math.random() - 0.5) * modifier.jitter * (val / 100);
-        
-        const startR = coreRadius + 15;
+        const startR = coreRadius + (15 * scale);
         const endR = startR + barHeight + localJitter;
         
         const x1 = centerX + Math.cos(angle) * startR;
@@ -166,15 +164,14 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
         ctx.strokeStyle = `${colorStr} ${0.3 + (val / 400)})`;
         ctx.stroke();
         
-        // Particle emission - more frequent when happy or urgent
         const threshold = modifier.intensity > 1.2 ? 180 : 210;
         if (val > threshold && Math.random() > 0.85) {
           particles.current.push({
             x: x2,
             y: y2,
             angle: angle + (Math.random() - 0.5) * 0.5,
-            speed: (2 + Math.random() * 5) * modifier.speed,
-            size: 1 + Math.random() * 3,
+            speed: (2 + Math.random() * 5) * modifier.speed * scale,
+            size: (1 + Math.random() * 3) * scale,
             color: `${colorStr} 0.9)`
           });
         }
@@ -182,7 +179,7 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
     }
 
     // 5. PARTICLE SYSTEM
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 * scale;
     for (let i = particles.current.length - 1; i >= 0; i--) {
       const p = particles.current[i];
       p.x += Math.cos(p.angle) * p.speed;
@@ -190,7 +187,7 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
       p.speed *= 0.95;
       p.size *= 0.94;
 
-      if (p.size < 0.2) {
+      if (p.size < 0.2 * scale) {
         particles.current.splice(i, 1);
         continue;
       }
@@ -201,18 +198,6 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
       ctx.fill();
     }
 
-    // Occasional "data spikes" for frustrated or urgent states
-    if (modifier.jitter > 2 && Math.random() > 0.95) {
-        ctx.beginPath();
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = `${colorStr} 0.3)`;
-        ctx.moveTo(centerX, centerY);
-        const spikeAngle = Math.random() * Math.PI * 2;
-        const spikeLen = 200 + Math.random() * 100;
-        ctx.lineTo(centerX + Math.cos(spikeAngle) * spikeLen, centerY + Math.sin(spikeAngle) * spikeLen);
-        ctx.stroke();
-    }
-
     requestRef.current = requestAnimationFrame(draw);
   };
 
@@ -220,17 +205,14 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
     initParticles();
     requestRef.current = requestAnimationFrame(draw);
     return () => {
-      if (requestRef.current) {
-        cancelAnimationFrame(requestRef.current);
-      }
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, [state, emotion, inputAnalyser, outputAnalyser]);
 
   return (
-    <div className="relative w-[600px] h-[600px] flex items-center justify-center">
-      {/* Background radial shine - reactive to intensity */}
+    <div ref={containerRef} className="relative w-full h-full flex items-center justify-center">
       <div 
-        className={`absolute inset-0 rounded-full blur-[140px] opacity-25 transition-all duration-1000 ${
+        className={`absolute inset-0 rounded-full blur-[80px] lg:blur-[140px] opacity-20 lg:opacity-25 transition-all duration-1000 ${
           state === 'LISTENING' ? 'bg-sky-500' :
           state === 'SPEAKING' ? 'bg-emerald-500' :
           state === 'ERROR' ? 'bg-rose-500' :
@@ -243,7 +225,7 @@ const NovaVisualizer: React.FC<NovaVisualizerProps> = ({ state, emotion, inputAn
         ref={canvasRef} 
         width={800} 
         height={800} 
-        className="w-full h-full scale-[1.1] transition-transform duration-500"
+        className="w-full h-full scale-[1.05] lg:scale-[1.1] transition-transform duration-500"
       />
     </div>
   );

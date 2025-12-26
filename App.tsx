@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageRole, ChatMessage, SystemStats, AssistantState, Emotion, MediaState } from './types';
 import { connectLive, decode, decodeAudioData, encode, performSearchQuery, performThinkingQuery, performFastQuery, generateSpeech } from './services/gemini';
@@ -10,7 +11,6 @@ import NovaVisualizer from './components/NovaVisualizer';
 type BrainMode = 'STANDARD' | 'SEARCH' | 'DEEP' | 'FAST';
 
 const App: React.FC = () => {
-  const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLive, setIsLive] = useState(false);
   const [assistantState, setAssistantState] = useState<AssistantState>('IDLE');
@@ -19,6 +19,8 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [inputText, setInputText] = useState('');
   const [media, setMedia] = useState<MediaState>({ isPlaying: false, title: '', artist: '' });
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [realtimeInput, setRealtimeInput] = useState('');
   
   const [stats, setStats] = useState<SystemStats>({
     cpu: 12,
@@ -28,7 +30,7 @@ const App: React.FC = () => {
     latency: 0,
     networkStatus: 'optimal'
   });
-  const [terminalLogs, setTerminalLogs] = useState<string[]>(["[SYSTEM] NOVA OS V4.5 - Full Control ACTIVE."]);
+  const [terminalLogs, setTerminalLogs] = useState<string[]>(["[SYSTEM] NOVA OS V4.5 KERNEL LOADED.", "[SYSTEM] Neural Link Protocol: READY."]);
   
   const sessionPromise = useRef<any>(null);
   const inputAudioContext = useRef<AudioContext | null>(null);
@@ -36,44 +38,13 @@ const App: React.FC = () => {
   const gainNode = useRef<GainNode | null>(null);
   const nextStartTime = useRef(0);
   const activeSources = useRef<Set<AudioBufferSourceNode>>(new Set());
-  const isAisSpeaking = useRef(false);
+  const errorCount = useRef(0);
 
   const inputAnalyser = useRef<AnalyserNode | null>(null);
   const outputAnalyser = useRef<AnalyserNode | null>(null);
 
   const currentInputTranscription = useRef('');
   const currentOutputTranscription = useRef('');
-
-  useEffect(() => {
-    const checkKey = async () => {
-      try {
-        if ((window as any).aistudio?.hasSelectedApiKey) {
-          const selected = await (window as any).aistudio.hasSelectedApiKey();
-          setHasKey(selected);
-        } else {
-          // If aistudio is not yet initialized, we default to false to show the link screen
-          setHasKey(false);
-        }
-      } catch (err) {
-        console.error("Failed to check API key status:", err);
-        setHasKey(false);
-      }
-    };
-    checkKey();
-  }, []);
-
-  const handleOpenKeySelector = async () => {
-    try {
-      if ((window as any).aistudio?.openSelectKey) {
-        await (window as any).aistudio.openSelectKey();
-        setHasKey(true);
-      } else {
-        addLog("SYSTEM ERROR: AI Studio Link unavailable.");
-      }
-    } catch (err) {
-      handleError(err);
-    }
-  };
 
   const addLog = (log: string) => {
     setTerminalLogs(prev => [...prev.slice(-49), `[${new Date().toLocaleTimeString()}] ${log}`]);
@@ -82,37 +53,43 @@ const App: React.FC = () => {
   const checkLatency = async () => {
     const start = performance.now();
     try {
-      await fetch('https://www.google.com/favicon.ico', { mode: 'no-cors', cache: 'no-store' });
-      const end = performance.now();
-      const lat = Math.round(end - start);
-      
-      let status: 'optimal' | 'degraded' | 'critical' = 'optimal';
-      if (lat > 400) status = 'critical';
-      else if (lat > 150) status = 'degraded';
-      
+      await fetch('/index.html', { method: 'HEAD', cache: 'no-store' });
+      const lat = Math.round(performance.now() - start);
+      let status: 'optimal' | 'degraded' | 'critical' = lat > 400 ? 'critical' : lat > 150 ? 'degraded' : 'optimal';
       setStats(prev => ({ ...prev, latency: lat, networkStatus: status }));
-      
-      if (status === 'critical' && mode !== 'FAST') {
-        setMode('FAST');
-        addLog("NETWORK CRITICAL: Switching to Fast Mode (concise).");
-      }
     } catch (e) {
       setStats(prev => ({ ...prev, networkStatus: 'critical' }));
     }
   };
 
   useEffect(() => {
-    const lTimer = setInterval(checkLatency, 5000);
+    const lTimer = setInterval(checkLatency, 8000);
     checkLatency();
-    return () => clearInterval(lTimer);
-  }, [mode]);
+    
+    const statsTimer = setInterval(() => {
+      setStats(prev => ({
+        ...prev,
+        cpu: Math.max(5, Math.min(95, prev.cpu + (Math.random() * 6 - 3))),
+        ram: Math.max(30, Math.min(90, prev.ram + (Math.random() * 2 - 1))),
+      }));
+    }, 1500);
+
+    return () => {
+      clearInterval(lTimer);
+      clearInterval(statsTimer);
+    };
+  }, []);
 
   const handleError = (err: any) => {
     const errorMessage = err?.message || String(err);
     addLog(`ERROR: ${errorMessage}`);
     setAssistantState('ERROR');
-    if (errorMessage.includes("Requested entity was not found")) {
-      handleOpenKeySelector();
+    errorCount.current++;
+    
+    if (errorCount.current > 3) {
+      addLog("WATCHDOG: Too many fault signals. Resetting neural link...");
+      if (isLive) stopVoiceSession();
+      errorCount.current = 0;
     }
   };
 
@@ -125,12 +102,7 @@ const App: React.FC = () => {
         gainNode.current.connect(outputAudioContext.current.destination);
       }
       
-      const clarityBoost = (currentEmotion === 'urgent' || currentEmotion === 'frustrated') ? 1.2 : 1.0;
-      gainNode.current!.gain.setTargetAtTime(clarityBoost, outputAudioContext.current.currentTime, 0.1);
-
       setAssistantState('SPEAKING');
-      isAisSpeaking.current = true;
-      
       const audioBuffer = await decodeAudioData(decode(base64), outputAudioContext.current, 24000, 1);
       const source = outputAudioContext.current.createBufferSource();
       source.buffer = audioBuffer;
@@ -139,10 +111,7 @@ const App: React.FC = () => {
 
       source.addEventListener('ended', () => {
         activeSources.current.delete(source);
-        if (activeSources.current.size === 0) {
-          setAssistantState('IDLE');
-          isAisSpeaking.current = false;
-        }
+        if (activeSources.current.size === 0) setAssistantState('IDLE');
       });
       
       const startTime = Math.max(nextStartTime.current, outputAudioContext.current.currentTime);
@@ -157,47 +126,30 @@ const App: React.FC = () => {
   const handleTextQuery = async () => {
     if (!inputText.trim()) return;
     const userQuery = inputText;
-    const currentLat = stats.latency || 0;
-    
     setInputText('');
-    
-    if (currentLat > 150) {
-      setAssistantState('LISTENING');
-    }
-    
     setIsProcessing(true);
-    // Optimization: Capture current messages for history before updating state
+    
     const history = [...messages];
     setMessages(prev => [...prev, { role: MessageRole.USER, content: userQuery, timestamp: Date.now() }]);
-    addLog(`Neural Link (${mode}): ${userQuery.slice(0, 30)}...`);
+    addLog(`Neural Link (${mode}): Processing...`);
 
     try {
       let responseText = "";
       let grounding: any[] = [];
-      const isConcise = currentLat > 400;
-      const targetMode = currentLat > 400 ? 'FAST' : mode;
 
-      if (targetMode === 'SEARCH') {
+      if (mode === 'SEARCH') {
         const result = await performSearchQuery(userQuery, history);
         responseText = result.text;
         grounding = result.grounding;
-      } else if (targetMode === 'DEEP') {
+      } else if (mode === 'DEEP') {
         responseText = await performThinkingQuery(userQuery, history);
       } else {
-        responseText = await performFastQuery(userQuery, history, isConcise);
+        responseText = await performFastQuery(userQuery, history);
       }
 
-      setAssistantState('SPEAKING');
-      setMessages(prev => [...prev, { 
-        role: MessageRole.ASSISTANT, 
-        content: responseText, 
-        timestamp: Date.now(),
-        grounding: grounding.length > 0 ? grounding : undefined
-      }]);
-      
+      setMessages(prev => [...prev, { role: MessageRole.ASSISTANT, content: responseText, timestamp: Date.now(), grounding }]);
       const speechData = await generateSpeech(responseText, emotion);
       if (speechData) await playB64Audio(speechData, emotion);
-
     } catch (err) {
       handleError(err);
     } finally {
@@ -207,46 +159,37 @@ const App: React.FC = () => {
 
   const startVoiceSession = async () => {
     try {
-      const isDegraded = stats.networkStatus !== 'optimal';
-      addLog(`Initializing NOVA Live (Network: ${stats.networkStatus})...`);
-      
       inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      
       inputAnalyser.current = inputAudioContext.current.createAnalyser();
       outputAnalyser.current = outputAudioContext.current.createAnalyser();
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
       sessionPromise.current = connectLive({
         onopen: () => {
           setIsLive(true);
           setAssistantState('IDLE');
-          addLog("NOVA: LIVE_SESSION_ESTABLISHED.");
-          
+          addLog("NOVA: LIVE_SYNC_ACTIVE.");
           const source = inputAudioContext.current!.createMediaStreamSource(stream);
           const scriptProcessor = inputAudioContext.current!.createScriptProcessor(4096, 1, 1);
           source.connect(inputAnalyser.current!);
-          
           scriptProcessor.onaudioprocess = (e) => {
             const inputData = e.inputBuffer.getChannelData(0);
-            const l = inputData.length;
-            const int16 = new Int16Array(l);
-            for (let i = 0; i < l; i++) int16[i] = inputData[i] * 32768;
-            const pcmBlob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
-            
+            const int16 = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
             sessionPromise.current?.then((session: any) => {
-              session.sendRealtimeInput({ media: pcmBlob });
+              session.sendRealtimeInput({ media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } });
             });
           };
-          
           source.connect(scriptProcessor);
           scriptProcessor.connect(inputAudioContext.current!.destination);
         },
         onmessage: async (message: any) => {
           if (message.serverContent?.inputTranscription) {
             setAssistantState('LISTENING');
-            currentInputTranscription.current += message.serverContent.inputTranscription.text;
+            const text = message.serverContent.inputTranscription.text;
+            currentInputTranscription.current += text;
+            setRealtimeInput(prev => (prev + " " + text).slice(-100));
           }
           if (message.serverContent?.outputTranscription) {
             currentOutputTranscription.current += message.serverContent.outputTranscription.text;
@@ -259,27 +202,25 @@ const App: React.FC = () => {
             ]);
             currentInputTranscription.current = '';
             currentOutputTranscription.current = '';
+            setRealtimeInput('');
             if (activeSources.current.size === 0) setAssistantState('IDLE');
           }
-
           const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
           if (base64Audio) {
             if (assistantState !== 'SPEAKING') setAssistantState('SPEAKING');
             await playB64Audio(base64Audio, emotion);
           }
-
           if (message.toolCall) {
             for (const fc of message.toolCall.functionCalls) {
               let res = "ok";
               if (fc.name === 'update_ui_state') {
                   if (fc.args.emotion) setEmotion(fc.args.emotion);
                   if (fc.args.state) setAssistantState(fc.args.state);
+              } else if (fc.name === 'read_system_logs') {
+                  res = terminalLogs.slice(-5).join("\n");
               } else if (fc.name === 'control_laptop') {
-                  const { action, target } = fc.args;
-                  addLog(`SYSTEM COMMAND: ${action} ${target || ''}`);
-                  if (action === 'play_music') setMedia({ isPlaying: true, title: target || 'Untitled Sync', artist: 'NOVA AI' });
-                  else if (action === 'stop_music') setMedia({ isPlaying: false, title: '', artist: '' });
-                  res = `Executed ${action}.`;
+                  if (fc.args.action === 'play_music') setMedia({ isPlaying: true, title: fc.args.target || 'Syncing', artist: 'NOVA' });
+                  res = `Executed ${fc.args.action}.`;
               }
               sessionPromise.current?.then((session: any) => {
                 session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: res } } });
@@ -288,8 +229,11 @@ const App: React.FC = () => {
           }
         },
         onerror: (err: any) => handleError(err),
-        onclose: () => setIsLive(false)
-      }, isDegraded);
+        onclose: () => {
+          setIsLive(false);
+          setRealtimeInput('');
+        }
+      }, stats.networkStatus !== 'optimal');
     } catch (err) {
       handleError(err);
     }
@@ -299,144 +243,172 @@ const App: React.FC = () => {
     sessionPromise.current?.then((session: any) => session.close());
     setIsLive(false);
     setAssistantState('IDLE');
+    setRealtimeInput('');
   };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setStats(prev => ({
-        ...prev,
-        cpu: Math.max(5, Math.min(95, prev.cpu + (Math.random() * 4 - 2))),
-        ram: Math.max(30, Math.min(90, prev.ram + (Math.random() * 0.8 - 0.4))),
-      }));
-    }, 800);
-    return () => clearInterval(interval);
-  }, []);
-
-  if (hasKey === false) {
-    return (
-      <div className="h-screen w-full bg-[#050508] flex items-center justify-center p-6 font-sans">
-        <div className="max-w-md w-full bg-zinc-900/50 border border-zinc-800 p-12 rounded-[2.5rem] text-center shadow-2xl backdrop-blur-xl">
-          <div className="w-20 h-20 bg-sky-500 rounded-3xl mx-auto mb-8 flex items-center justify-center">
-            <span className="text-white text-4xl font-black">N</span>
-          </div>
-          <h1 className="text-4xl font-black text-white mb-4 tracking-tighter">Initialize Link</h1>
-          <button 
-            onClick={handleOpenKeySelector}
-            className="w-full py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest hover:bg-sky-50"
-          >
-            Select API Key
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex h-screen w-full bg-[#050508] text-zinc-300 font-sans selection:bg-sky-500/30 antialiased overflow-hidden">
-      <div className="w-80 border-r border-zinc-900/50 flex flex-col bg-[#08080c] z-20 shadow-2xl">
+    <div className="flex h-screen w-full bg-[#050508] text-zinc-300 font-sans selection:bg-sky-500/30 antialiased overflow-hidden flex-col lg:flex-row">
+      
+      {/* Neural Sidebar */}
+      <div className={`
+        fixed inset-y-0 left-0 z-40 w-80 bg-[#08080c] transition-transform duration-300 transform lg:relative lg:translate-x-0
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        flex flex-col border-r border-zinc-900/50 shadow-2xl
+      `}>
         <div className="p-8 border-b border-zinc-900/50 flex items-center gap-6">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-700 ${
-            assistantState === 'LISTENING' ? 'bg-sky-500 shadow-[0_0_50px_rgba(14,165,233,0.8)]' :
-            assistantState === 'SPEAKING' ? 'bg-emerald-500 shadow-[0_0_50px_rgba(34,197,94,0.8)]' :
-            'bg-zinc-800'
-          }`}>
-            <span className="font-black text-white text-2xl">N</span>
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-zinc-800 shadow-inner group">
+            <span className="font-black text-white text-2xl group-hover:scale-110 transition-transform">N</span>
           </div>
           <div>
-            <h1 className="font-bold text-2xl text-white mb-1">NOVA Core</h1>
-            <div className="flex items-center gap-2">
-               <div className={`w-2 h-2 rounded-full ${stats.networkStatus === 'optimal' ? 'bg-emerald-500' : stats.networkStatus === 'degraded' ? 'bg-amber-500' : 'bg-rose-500'}`} />
-               <p className="text-[9px] uppercase tracking-widest font-black text-zinc-600">
-                 Net: {stats.latency}ms
-               </p>
-            </div>
+            <h1 className="font-bold text-2xl text-white tracking-tight">NOVA Core</h1>
+            <p className="text-[9px] uppercase tracking-widest font-black text-zinc-600">Kernel: V4.5_STABLE</p>
           </div>
         </div>
-        
         <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
-          {media.isPlaying && (
-            <div className="p-4 bg-sky-500/10 border border-sky-500/30 rounded-2xl">
-              <div className="flex items-center gap-3 text-sky-400">
-                {ICONS.MUSIC} <p className="text-sm font-bold truncate">{media.title}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Processing Modes</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { id: 'STANDARD', icon: ICONS.MIC, label: 'Live' },
-                { id: 'SEARCH', icon: ICONS.SEARCH, label: 'Search' },
-                { id: 'DEEP', icon: ICONS.BRAIN, label: 'Compute' },
-                { id: 'FAST', icon: ICONS.BOLT, label: 'Fast' }
-              ].map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => setMode(m.id as BrainMode)}
-                  className={`flex items-center gap-3 px-3 py-3 rounded-xl border transition-all ${
-                    mode === m.id ? 'bg-sky-500/10 border-sky-500 text-sky-400' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500'
-                  }`}
-                >
-                  {m.icon} <span className="text-[10px] font-bold uppercase">{m.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
           <SystemDashboard stats={stats} />
           <Terminal logs={terminalLogs} />
         </div>
-
         <div className="p-6 border-t border-zinc-900/50">
-           <button 
-             onClick={isLive ? stopVoiceSession : startVoiceSession}
-             className={`w-full py-5 rounded-[2rem] flex items-center justify-center gap-4 font-black text-sm uppercase tracking-widest transition-all ${
-               isLive ? 'bg-rose-500/5 text-rose-500 border border-rose-500/20' : 'bg-white text-black hover:bg-sky-50'
-             }`}
-           >
-             {isLive ? 'End Live Session' : 'Go Live'}
-             {ICONS.MIC}
+           <button onClick={() => setMode('SEARCH')} className="w-full py-3 mb-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-zinc-800 hover:bg-zinc-800 transition-colors flex items-center justify-center gap-3">
+             {ICONS.SEARCH} Deep Search Web
            </button>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col relative overflow-hidden items-center justify-center bg-radial-gradient">
-        <div className="relative flex flex-col items-center z-10 w-full max-w-4xl">
-          <NovaVisualizer state={assistantState} emotion={emotion} inputAnalyser={inputAnalyser.current} outputAnalyser={outputAnalyser.current} />
+      {/* Main Home Hub */}
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-radial-gradient">
+        
+        {/* Mobile Header Nav */}
+        <div className="lg:hidden flex items-center justify-between p-4 border-b border-zinc-900/50 bg-[#08080c]/80 backdrop-blur-xl z-20">
+          <div className="flex items-center gap-3">
+             <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-xs font-black">N</div>
+             <h1 className="font-black tracking-tighter text-lg">NOVA</h1>
+          </div>
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-400">
+             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
+        </div>
+
+        {/* Home Stage Content */}
+        <div className="flex-1 flex flex-col items-center justify-center p-4 lg:p-12 z-10 relative">
           
-          <div className="mt-8 text-center space-y-8 px-6 w-full">
-            <div className="space-y-4">
-              <h2 className="text-8xl font-black tracking-tighter text-white">NOVA</h2>
-              <p className="text-zinc-500 text-xl font-light tracking-tight">
-                {isProcessing ? 'Processing...' : assistantState === 'LISTENING' ? 'Listening...' : assistantState === 'SPEAKING' ? 'Speaking...' : 'Ready.'}
-              </p>
+          {/* Diagnostic HUD (Desktop only) */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-[280px] -translate-y-[120px] hidden xl:flex flex-col gap-5 pointer-events-none opacity-40">
+             <div className="flex items-center gap-4 px-5 py-2.5 rounded-full border border-zinc-800/50 bg-black/20 backdrop-blur-sm">
+                <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse shadow-glow-emerald' : 'bg-zinc-700'}`}></div>
+                <span className="text-[10px] font-black uppercase tracking-widest">Neural_Sync</span>
+             </div>
+             <div className="flex items-center gap-4 px-5 py-2.5 rounded-full border border-zinc-800/50 bg-black/20 backdrop-blur-sm">
+                <div className={`w-2 h-2 rounded-full ${assistantState === 'SPEAKING' ? 'bg-sky-500 animate-pulse shadow-glow-sky' : 'bg-zinc-700'}`}></div>
+                <span className="text-[10px] font-black uppercase tracking-widest">Audio_Synthesis</span>
+             </div>
+          </div>
+
+          <div className="relative w-full aspect-square max-w-[min(85vw,460px)] lg:max-w-[580px] flex flex-col items-center justify-center transition-all duration-700">
+             <NovaVisualizer state={assistantState} emotion={emotion} inputAnalyser={inputAnalyser.current} outputAnalyser={outputAnalyser.current} />
+             
+             {/* Central Neural Activation Hub */}
+             <div className="absolute bottom-[-10px] lg:bottom-[-30px] z-20">
+                <button 
+                  onClick={isLive ? stopVoiceSession : startVoiceSession}
+                  className={`group relative flex items-center justify-center px-12 py-5 rounded-full font-black text-[11px] uppercase tracking-[0.25em] transition-all duration-500 border-2 overflow-hidden ${
+                    isLive 
+                    ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400 shadow-[0_0_60px_rgba(16,185,129,0.3)]' 
+                    : 'bg-white/5 border-white/10 text-white hover:bg-white hover:text-black hover:scale-105 active:scale-95'
+                  }`}
+                >
+                   <span className="relative z-10 flex items-center gap-4">
+                     {isLive ? (
+                        <>
+                          <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping"></div>
+                          Neural Link Online
+                        </>
+                     ) : (
+                        <>
+                          <div className="group-hover:animate-bounce">{ICONS.MIC}</div>
+                          Initialize Neural Link
+                        </>
+                     )}
+                   </span>
+                   {isLive && <div className="absolute inset-0 bg-emerald-500/5 animate-pulse"></div>}
+                </button>
+             </div>
+          </div>
+          
+          <div className="mt-16 lg:mt-24 text-center space-y-8 w-full max-w-2xl px-4">
+            
+            {/* Real-time Transcription Stream */}
+            <div className={`h-10 flex items-center justify-center transition-all duration-500 transform ${realtimeInput ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'}`}>
+               <div className="flex items-center gap-5 bg-zinc-900/60 backdrop-blur-xl px-7 py-3 rounded-full border border-zinc-800/80 shadow-2xl">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-glow-emerald"></div>
+                  <p className="text-xs font-mono text-zinc-300 italic tracking-tight truncate max-w-[280px] lg:max-w-md">"{realtimeInput}"</p>
+               </div>
             </div>
 
-            <div className="w-full max-w-2xl mx-auto h-48 overflow-hidden mask-fade-vertical">
+            {/* Neural Chat Buffer */}
+            <div className="w-full h-32 lg:h-44 overflow-hidden mask-fade-vertical">
               <ChatWindow messages={messages.slice(-2)} isTyping={isProcessing} />
             </div>
 
-            <div className="w-full max-w-xl mx-auto relative group">
+            {/* Global Input Bar */}
+            <div className={`w-full max-w-xl mx-auto relative group transition-all duration-700 ${isLive ? 'opacity-40 hover:opacity-100 scale-95 hover:scale-100' : 'opacity-100'}`}>
+              <div className="absolute -inset-1 bg-gradient-to-r from-sky-500/30 to-emerald-500/30 rounded-[2rem] blur opacity-20 group-focus-within:opacity-100 transition duration-1000"></div>
               <input 
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleTextQuery()}
-                placeholder={`Type or click 'Go Live' for voice...`}
-                className="w-full bg-zinc-900/40 border-2 border-zinc-800 rounded-3xl py-5 px-8 text-lg font-medium outline-none focus:border-sky-500 text-white shadow-2xl"
+                type="text" 
+                value={inputText} 
+                onChange={(e) => setInputText(e.target.value)} 
+                onKeyDown={(e) => e.key === 'Enter' && handleTextQuery()} 
+                placeholder={isLive ? "Speak now or override with text..." : "Type a protocol command for NOVA..."} 
+                className="relative w-full bg-[#0d0d12]/90 border-2 border-zinc-800 rounded-[2rem] py-4 lg:py-5 px-7 lg:px-9 text-base lg:text-lg font-medium outline-none focus:border-sky-500/60 text-white shadow-2xl transition-all" 
               />
-              <button onClick={handleTextQuery} className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-sky-500 rounded-full flex items-center justify-center text-white">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <button 
+                onClick={handleTextQuery}
+                className="absolute right-5 top-1/2 -translate-y-1/2 w-11 h-11 bg-zinc-800/80 hover:bg-sky-500 rounded-2xl flex items-center justify-center text-white transition-all shadow-xl active:scale-90"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7-7 7"/></svg>
               </button>
+            </div>
+
+            {/* Mode Switcher */}
+            <div className="flex gap-3 justify-center flex-wrap">
+               {['STANDARD', 'SEARCH', 'DEEP', 'FAST'].map(m => (
+                 <button 
+                  key={m}
+                  onClick={() => setMode(m as BrainMode)}
+                  className={`px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] transition-all border ${mode === m ? 'bg-sky-500 border-sky-400 text-white shadow-glow-sky' : 'bg-zinc-900/50 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'}`}
+                 >
+                   {m}
+                 </button>
+               ))}
             </div>
           </div>
         </div>
+
+        {/* Persistent Desktop Media HUD */}
+        {media.isPlaying && (
+          <div className="absolute top-10 right-10 hidden lg:flex items-center gap-5 bg-black/40 backdrop-blur-2xl p-5 rounded-[2.5rem] border border-zinc-800/80 shadow-[0_30px_60px_rgba(0,0,0,0.5)] animate-in fade-in slide-in-from-right-8 duration-700">
+             <div className="w-12 h-12 bg-sky-500/20 rounded-2xl flex items-center justify-center text-sky-400 border border-sky-500/30 animate-pulse">
+                {ICONS.MUSIC}
+             </div>
+             <div className="pr-6">
+                <p className="text-[10px] font-black text-sky-500 uppercase tracking-widest mb-0.5">Stream Active</p>
+                <p className="text-sm font-bold text-white max-w-[140px] truncate leading-tight tracking-tight">{media.title}</p>
+             </div>
+          </div>
+        )}
       </div>
 
+      {/* Global Aesthetics Overlay */}
+      {isSidebarOpen && (
+        <div className="lg:hidden fixed inset-0 bg-black/70 backdrop-blur-md z-30 animate-in fade-in duration-300" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
       <style>{`
-        .mask-fade-vertical { mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent); }
+        .mask-fade-vertical { mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent); }
+        .bg-radial-gradient { background: radial-gradient(circle at center, #0a0a14 0%, #050508 100%); }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .bg-radial-gradient { background: radial-gradient(circle at center, #0a0a10 0%, #050508 100%); }
+        .shadow-glow-emerald { box-shadow: 0 0 15px rgba(16, 185, 129, 0.5); }
+        .shadow-glow-sky { box-shadow: 0 0 15px rgba(14, 165, 233, 0.5); }
       `}</style>
     </div>
   );

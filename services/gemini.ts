@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Modality, FunctionDeclaration } from "@google/genai";
 import { SYSTEM_PROMPT } from "../constants";
 import { Emotion, ChatMessage, MessageRole } from "../types";
@@ -40,32 +41,36 @@ const tools: FunctionDeclaration[] = [
       },
       required: ["action"]
     },
-    description: "Allows NOVA to control the user's laptop, including media playback and app management."
+    description: "Allows NOVA to control the user's laptop environment."
+  },
+  {
+    name: "read_system_logs",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        lines: { type: Type.NUMBER, description: "Number of most recent log lines to read." }
+      }
+    },
+    description: "Allows NOVA to monitor simulated terminal errors and self-correct."
   }
 ];
 
-/**
- * Utility to format chat history for Gemini API
- */
 const formatHistory = (history: ChatMessage[], currentPrompt: string) => {
   const formatted = history.map(msg => ({
     role: msg.role === MessageRole.USER ? 'user' : 'model',
     parts: [{ text: msg.content }]
   }));
-  
   formatted.push({
     role: 'user',
     parts: [{ text: currentPrompt }]
   });
-  
-  // Limit history to last 10 turns to maintain performance
-  return formatted.slice(-11);
+  return formatted.slice(-10); // Maintain a rolling 10-message context window
 };
 
 export const connectLive = (callbacks: any, isDegraded: boolean = false) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const instruction = isDegraded 
-    ? `${SYSTEM_PROMPT}\nNETWORK_ALERT: High latency detected. Keep responses extremely brief and prioritize system commands over conversation.`
+    ? `${SYSTEM_PROMPT}\nNETWORK_ALERT: High latency detected. Respond very concisely.`
     : SYSTEM_PROMPT;
 
   return ai.live.connect({
@@ -84,8 +89,6 @@ export const connectLive = (callbacks: any, isDegraded: boolean = false) => {
   });
 };
 
-/** Specialized Mode Methods with Context Support **/
-
 export const performSearchQuery = async (prompt: string, history: ChatMessage[] = []) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
@@ -97,7 +100,7 @@ export const performSearchQuery = async (prompt: string, history: ChatMessage[] 
     },
   });
   return {
-    text: response.text || "I encountered an issue processing that search.",
+    text: response.text || "Neural search link failure.",
     grounding: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
   };
 };
@@ -112,23 +115,19 @@ export const performThinkingQuery = async (prompt: string, history: ChatMessage[
       systemInstruction: SYSTEM_PROMPT
     },
   });
-  return response.text || "Thinking module failure. Please retry.";
+  return response.text || "Cognitive module failure.";
 };
 
-export const performFastQuery = async (prompt: string, history: ChatMessage[] = [], concise: boolean = false) => {
+export const performFastQuery = async (prompt: string, history: ChatMessage[] = []) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const instruction = concise 
-    ? `${SYSTEM_PROMPT}\nURGENT: Respond in less than 15 words.`
-    : SYSTEM_PROMPT;
-
   const response = await ai.models.generateContent({
     model: 'gemini-flash-lite-latest',
     contents: formatHistory(history, prompt),
     config: {
-      systemInstruction: instruction
+      systemInstruction: SYSTEM_PROMPT
     },
   });
-  return response.text || "Instant response failed.";
+  return response.text || "Direct logic failure.";
 };
 
 const PROSODY_MAP: Record<Emotion, string> = {
@@ -160,8 +159,6 @@ export const generateSpeech = async (text: string, emotion: Emotion = 'neutral')
   });
   return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 };
-
-/** Utilities **/
 
 export function decode(base64: string) {
   const binaryString = atob(base64);
