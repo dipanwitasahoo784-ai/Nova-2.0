@@ -124,32 +124,48 @@ const App: React.FC = () => {
   };
 
   const handleTextQuery = async () => {
-    if (!inputText.trim()) return;
-    const userQuery = inputText;
-    setInputText('');
+    const trimmedInput = inputText.trim();
+    if (!trimmedInput || isProcessing) return;
+
     setIsProcessing(true);
+    setInputText('');
+    setAssistantState('LISTENING');
     
     const history = [...messages];
-    setMessages(prev => [...prev, { role: MessageRole.USER, content: userQuery, timestamp: Date.now() }]);
-    addLog(`Neural Link (${mode}): Processing...`);
+    const userMessage: ChatMessage = { role: MessageRole.USER, content: trimmedInput, timestamp: Date.now() };
+    setMessages(prev => [...prev, userMessage]);
+    addLog(`Neural Link (${mode}): Received protocol request.`);
 
     try {
       let responseText = "";
       let grounding: any[] = [];
 
       if (mode === 'SEARCH') {
-        const result = await performSearchQuery(userQuery, history);
+        const result = await performSearchQuery(trimmedInput, history);
         responseText = result.text;
         grounding = result.grounding;
       } else if (mode === 'DEEP') {
-        responseText = await performThinkingQuery(userQuery, history);
+        responseText = await performThinkingQuery(trimmedInput, history);
       } else {
-        responseText = await performFastQuery(userQuery, history);
+        responseText = await performFastQuery(trimmedInput, history);
       }
 
-      setMessages(prev => [...prev, { role: MessageRole.ASSISTANT, content: responseText, timestamp: Date.now(), grounding }]);
+      const assistantMessage: ChatMessage = { 
+        role: MessageRole.ASSISTANT, 
+        content: responseText, 
+        timestamp: Date.now(), 
+        grounding 
+      };
+      
+      setMessages(prev => [...prev, assistantMessage]);
+      addLog(`Neural Link: Synthesis complete.`);
+      
       const speechData = await generateSpeech(responseText, emotion);
-      if (speechData) await playB64Audio(speechData, emotion);
+      if (speechData) {
+        await playB64Audio(speechData, emotion);
+      } else {
+        setAssistantState('IDLE');
+      }
     } catch (err) {
       handleError(err);
     } finally {
@@ -363,9 +379,14 @@ const App: React.FC = () => {
               />
               <button 
                 onClick={handleTextQuery}
-                className="absolute right-5 top-1/2 -translate-y-1/2 w-11 h-11 bg-zinc-800/80 hover:bg-sky-500 rounded-2xl flex items-center justify-center text-white transition-all shadow-xl active:scale-90"
+                disabled={isProcessing}
+                className={`absolute right-5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-2xl flex items-center justify-center text-white transition-all shadow-xl active:scale-90 ${isProcessing ? 'bg-zinc-700 cursor-not-allowed' : 'bg-zinc-800/80 hover:bg-sky-500'}`}
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7-7 7"/></svg>
+                {isProcessing ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7-7 7"/></svg>
+                )}
               </button>
             </div>
 
