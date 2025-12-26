@@ -1,0 +1,202 @@
+import { GoogleGenAI, Type, Modality, FunctionDeclaration } from "@google/genai";
+import { SYSTEM_PROMPT } from "../constants";
+import { Emotion, ChatMessage, MessageRole } from "../types";
+
+const tools: FunctionDeclaration[] = [
+  {
+    name: "update_ui_state",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        emotion: { 
+          type: Type.STRING, 
+          enum: ["neutral", "positive", "calm", "urgent", "confused", "sad", "happy", "frustrated"],
+          description: "NOVA's current internal emotional state."
+        },
+        state: {
+          type: Type.STRING,
+          enum: ["IDLE", "LISTENING", "SPEAKING", "ERROR"],
+          description: "Current high-level operational state."
+        }
+      },
+      required: ["emotion"]
+    },
+    description: "Synchronizes internal personality and system state with the visual interface."
+  },
+  {
+    name: "control_laptop",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        action: { 
+          type: Type.STRING, 
+          enum: ["play_music", "stop_music", "open_app", "close_app", "system_status", "adjust_volume"],
+          description: "The system command to execute."
+        },
+        target: { 
+          type: Type.STRING, 
+          description: "The name of the app, song, or detail for the action." 
+        }
+      },
+      required: ["action"]
+    },
+    description: "Allows NOVA to control the user's laptop, including media playback and app management."
+  }
+];
+
+/**
+ * Utility to format chat history for Gemini API
+ */
+const formatHistory = (history: ChatMessage[], currentPrompt: string) => {
+  const formatted = history.map(msg => ({
+    role: msg.role === MessageRole.USER ? 'user' : 'model',
+    parts: [{ text: msg.content }]
+  }));
+  
+  formatted.push({
+    role: 'user',
+    parts: [{ text: currentPrompt }]
+  });
+  
+  // Limit history to last 10 turns to maintain performance
+  return formatted.slice(-11);
+};
+
+export const connectLive = (callbacks: any, isDegraded: boolean = false) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const instruction = isDegraded 
+    ? `${SYSTEM_PROMPT}\nNETWORK_ALERT: High latency detected. Keep responses extremely brief and prioritize system commands over conversation.`
+    : SYSTEM_PROMPT;
+
+  return ai.live.connect({
+    model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+    callbacks,
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+      },
+      systemInstruction: instruction,
+      tools: [{ functionDeclarations: tools }],
+      inputAudioTranscription: {},
+      outputAudioTranscription: {}
+    },
+  });
+};
+
+/** Specialized Mode Methods with Context Support **/
+
+export const performSearchQuery = async (prompt: string, history: ChatMessage[] = []) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: formatHistory(history, prompt),
+    config: {
+      tools: [{ googleSearch: {} }],
+      systemInstruction: SYSTEM_PROMPT
+    },
+  });
+  return {
+    text: response.text || "I encountered an issue processing that search.",
+    grounding: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
+  };
+};
+
+export const performThinkingQuery = async (prompt: string, history: ChatMessage[] = []) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: formatHistory(history, prompt),
+    config: {
+      thinkingConfig: { thinkingBudget: 32768 },
+      systemInstruction: SYSTEM_PROMPT
+    },
+  });
+  return response.text || "Thinking module failure. Please retry.";
+};
+
+export const performFastQuery = async (prompt: string, history: ChatMessage[] = [], concise: boolean = false) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const instruction = concise 
+    ? `${SYSTEM_PROMPT}\nURGENT: Respond in less than 15 words.`
+    : SYSTEM_PROMPT;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-flash-lite-latest',
+    contents: formatHistory(history, prompt),
+    config: {
+      systemInstruction: instruction
+    },
+  });
+  return response.text || "Instant response failed.";
+};
+
+const PROSODY_MAP: Record<Emotion, string> = {
+  neutral: "Say clearly: ",
+  happy: "Say cheerfully: ",
+  positive: "Say warmly: ",
+  calm: "Say softly: ",
+  urgent: "Say urgently: ",
+  frustrated: "Say firmly: ",
+  confused: "Say puzzled: ",
+  sad: "Say somberly: "
+};
+
+export const generateSpeech = async (text: string, emotion: Emotion = 'neutral') => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const prosodyPrefix = PROSODY_MAP[emotion] || PROSODY_MAP.neutral;
+  
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash-preview-tts",
+    contents: [{ parts: [{ text: `${prosodyPrefix}${text}` }] }],
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: 'Kore' },
+        },
+      },
+    },
+  });
+  return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+};
+
+/** Utilities **/
+
+export function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+export async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
+export function encode(bytes: Uint8Array) {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
