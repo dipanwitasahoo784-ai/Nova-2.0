@@ -121,7 +121,7 @@ export const performThinkingQuery = async (prompt: string, history: ChatMessage[
 export const performFastQuery = async (prompt: string, history: ChatMessage[] = []) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
-    model: 'gemini-flash-lite-latest',
+    model: 'gemini-3-flash-preview',
     contents: formatHistory(history, prompt),
     config: {
       systemInstruction: SYSTEM_PROMPT
