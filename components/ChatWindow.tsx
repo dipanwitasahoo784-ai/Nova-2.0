@@ -17,18 +17,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isTyping }) => {
   }, [messages, isTyping]);
 
   return (
-    <div className="space-y-3 md:space-y-6 px-1">
+    <div className="space-y-2 md:space-y-6 px-1">
       {messages.map((msg, idx) => (
         <div
           key={idx}
           className={`flex ${msg.role === MessageRole.USER ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-500`}
         >
-          <div className={`max-w-[88%] md:max-w-[90%] rounded-2xl md:rounded-[1.5rem] px-4 md:px-6 py-2.5 md:py-4 ${
+          <div className={`max-w-[92%] md:max-w-[90%] rounded-[1.25rem] md:rounded-[1.5rem] px-4 md:px-6 py-3 md:py-4 ${
             msg.role === MessageRole.USER
-              ? 'bg-zinc-800/80 text-white rounded-tr-none border border-zinc-700/50 shadow-xl'
-              : 'bg-zinc-900/90 border border-sky-500/20 text-sky-50 rounded-tl-none shadow-2xl backdrop-blur-md'
+              ? 'bg-zinc-800/80 text-white rounded-tr-none border border-zinc-700/50 shadow-lg'
+              : 'bg-zinc-900/90 border border-sky-500/20 text-sky-50 rounded-tl-none shadow-xl backdrop-blur-md'
           }`}>
-            <div className="flex items-center gap-2 mb-1 md:mb-2">
+            <div className="flex items-center gap-2 mb-1">
                 <span className={`text-[7px] md:text-[9px] uppercase font-black tracking-widest opacity-60 ${msg.role === MessageRole.USER ? 'text-zinc-400' : 'text-sky-400'}`}>
                     {msg.role === MessageRole.USER ? 'USER_INPUT' : 'AGNI_SYNTHESIS'}
                 </span>
@@ -37,11 +37,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isTyping }) => {
               {msg.content}
             </p>
 
-            {/* Render grounding chunks (sources) for search queries */}
             {msg.grounding && msg.grounding.length > 0 && (
-              <div className="mt-3 md:mt-4 pt-2 md:pt-4 border-t border-sky-500/20 space-y-2">
-                <p className="text-[8px] md:text-[10px] font-black text-sky-400 uppercase tracking-widest">Sources</p>
-                <div className="flex flex-wrap gap-1.5 md:gap-2">
+              <div className="mt-3 pt-3 border-t border-sky-500/10 space-y-2">
+                <div className="flex flex-wrap gap-1.5">
                   {msg.grounding.map((chunk, cIdx) => (
                     chunk.web && (
                       <a 
@@ -49,7 +47,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isTyping }) => {
                         href={chunk.web.uri} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="text-[7px] md:text-[10px] bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 px-2 py-0.5 md:py-1 rounded border border-sky-500/30 transition-colors flex items-center gap-1 max-w-full truncate"
+                        className="text-[8px] md:text-[10px] bg-sky-500/10 text-sky-300 px-2 py-1 rounded-full border border-sky-500/20 transition-colors flex items-center gap-1 max-w-full truncate"
                       >
                         <span className="truncate">{chunk.web.title || 'Source'}</span>
                         <span className="flex-shrink-0">↗</span>
@@ -65,10 +63,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isTyping }) => {
       
       {isTyping && (
         <div className="flex justify-start">
-          <div className="bg-zinc-900/90 border border-sky-500/20 rounded-xl md:rounded-2xl rounded-tl-none px-4 md:px-6 py-2.5 md:py-4 shadow-2xl flex gap-1.5 items-center">
-            <div className="w-1 md:w-1.5 h-1 md:h-1.5 bg-sky-500 rounded-full animate-bounce"></div>
-            <div className="w-1 md:w-1.5 h-1 md:h-1.5 bg-sky-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-            <div className="w-1 md:w-1.5 h-1 md:h-1.5 bg-sky-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+          <div className="bg-zinc-900/90 border border-sky-500/20 rounded-2xl rounded-tl-none px-4 py-3 shadow-2xl flex gap-1.5 items-center">
+            <div className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-bounce"></div>
+            <div className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+            <div className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
           </div>
         </div>
       )}

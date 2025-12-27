@@ -230,7 +230,7 @@ const App: React.FC = () => {
       } else if (mode === 'DEEP' && plan === 'NEURAL') {
         response = await performThinkingQuery(query, history);
       } else if (mode === 'LOCAL') {
-        response = await performOllamaQuery(query, history, "llama3.1"); // Using beast recommendation
+        response = await performOllamaQuery(query, history, "llama3.1");
       } else {
         response = await performFastQuery(query, history);
       }
@@ -251,19 +251,19 @@ const App: React.FC = () => {
         <div className="min-h-full w-full flex flex-col items-center justify-center p-4 md:p-6 lg:p-12">
           <div className="max-w-6xl w-full space-y-8 md:space-y-12 py-12 safe-area-bottom">
             <div className="text-center space-y-4 px-4 animate-in fade-in slide-in-from-top-4 duration-700">
-              <h2 className="text-4xl md:text-6xl font-black text-white tracking-tighter">Choose Your Logic Engine</h2>
-              <p className="text-zinc-500 max-w-lg mx-auto text-sm md:text-base font-medium">Select the processing tier that matches your neural interface requirements.</p>
+              <h2 className="text-4xl md:text-6xl font-black text-white tracking-tighter">Neural Tiers</h2>
+              <p className="text-zinc-500 max-w-lg mx-auto text-sm md:text-base font-medium">Select the processing tier that matches your interface requirements.</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 px-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 px-4">
               {[
-                { id: 'LEGACY', name: 'Original', price: 'Legacy', features: ['Classic Stable Kernel', 'Standard Logic', 'Standard Voice Synthesis'] },
-                { id: 'FREE', name: 'Standard', price: '$0', features: ['Core Neural Intelligence', 'Priority Fast Mode', 'Basic Live Sync Link'] },
-                { id: 'PRO', name: 'Deep Pro', price: '$20', features: ['Google Search Grounding', 'Optimized Processing', 'Enhanced Live Interaction'] },
-                { id: 'NEURAL', name: 'Neural Max', price: '$40', features: ['Full Cognitive Reasoning', 'Deep Knowledge Graph', 'Advanced Vision Identification'] }
+                { id: 'LEGACY', name: 'Original', price: 'Legacy', features: ['Stable Kernel', 'Standard Logic', 'Standard Voice'] },
+                { id: 'FREE', name: 'Standard', price: '$0', features: ['Core Intelligence', 'Priority Fast', 'Basic Sync'] },
+                { id: 'PRO', name: 'Deep Pro', price: '$20', features: ['Search Grounding', 'Optimized Flow', 'Enhanced Live'] },
+                { id: 'NEURAL', name: 'Neural Max', price: '$40', features: ['Full Reasoning', 'Knowledge Graph', 'Vision Sensors'] }
               ].map((p, idx) => (
                 <div key={p.id} 
                   style={{ animationDelay: `${idx * 100}ms` }}
-                  className="bg-zinc-900/50 border border-zinc-800 p-8 rounded-[2.5rem] flex flex-col justify-between hover:border-sky-500/50 transition-all group animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both"
+                  className="bg-zinc-900/50 border border-zinc-800 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] flex flex-col justify-between hover:border-sky-500/50 transition-all group animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both"
                 >
                   <div className="space-y-6">
                     <div>
@@ -273,7 +273,7 @@ const App: React.FC = () => {
                     <ul className="space-y-4">
                       {p.features.map(f => (
                         <li key={f} className="flex items-center gap-3 text-xs text-zinc-300">
-                          <div className="w-1.5 h-1.5 bg-sky-500 rounded-full flex-shrink-0 shadow-[0_0_8px_rgba(14,165,233,0.5)]"></div> {f}
+                          <div className="w-1.5 h-1.5 bg-sky-500 rounded-full flex-shrink-0"></div> {f}
                         </li>
                       ))}
                     </ul>
@@ -282,7 +282,7 @@ const App: React.FC = () => {
                     onClick={() => { setPlan(p.id as SubscriptionPlan); setView('DASHBOARD'); }}
                     className="mt-8 w-full py-4 rounded-2xl bg-zinc-800 text-white font-black uppercase text-[10px] tracking-widest group-hover:bg-sky-500 active:scale-95 transition-all shadow-xl"
                   >
-                    Sync Logic
+                    Initialize
                   </button>
                 </div>
               ))}
@@ -295,11 +295,13 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-[100dvh] w-full bg-[#050508] text-zinc-300 overflow-hidden flex-col lg:flex-row relative">
+      {/* Mobile Drawers Backdrop */}
       {(isSidebarOpen || isStatsOpen) && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] lg:hidden transition-opacity duration-300 animate-in fade-in" 
              onClick={() => { setIsSidebarOpen(false); setIsStatsOpen(false); }} />
       )}
 
+      {/* Left Drawer (System) */}
       <div className={`fixed inset-y-0 left-0 z-[70] w-[85vw] max-w-80 bg-[#08080c] border-r border-zinc-900/50 flex flex-col transition-transform duration-500 lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-8 flex items-center justify-between safe-area-top">
           <div className="flex items-center gap-4">
@@ -320,19 +322,22 @@ const App: React.FC = () => {
            </div>
            <Terminal logs={terminalLogs} />
         </div>
-        <div className="p-6 border-t border-zinc-900/50 bg-[#08080c] grid grid-cols-2 gap-3 safe-area-bottom">
+        <div className="p-6 border-t border-zinc-900/50 bg-[#08080c] grid grid-cols-2 gap-3 pb-[calc(1.5rem+var(--sab))]">
            <button onClick={() => setView('PLANS')} className="py-4 bg-zinc-900 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-zinc-800 active:bg-zinc-800 transition-colors">Plan</button>
            <button onClick={() => setView('LOGIN')} className="py-4 bg-zinc-900 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-zinc-800 active:bg-zinc-800 transition-colors">Exit</button>
         </div>
       </div>
 
+      {/* Right Drawer (Telemetry) */}
       <div className={`fixed inset-y-0 right-0 z-[70] w-[85vw] max-w-80 bg-[#08080c] border-l border-zinc-900/50 flex flex-col transition-transform duration-500 lg:hidden ${isStatsOpen ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="p-8 safe-area-top"><h2 className="text-xl font-black text-white tracking-tighter uppercase">Neural Telemetry</h2></div>
           <div className="flex-1 overflow-y-auto px-6 pb-24 smooth-scroll"><SystemDashboard stats={stats} /></div>
       </div>
 
+      {/* Main Container */}
       <div className="flex-1 flex flex-col relative bg-radial-gradient h-[100dvh]">
-        <div className="flex items-center justify-between p-5 md:p-6 bg-[#08080c]/50 backdrop-blur-xl border-b border-zinc-900/50 z-20 safe-area-top">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 md:px-8 md:py-6 bg-[#08080c]/50 backdrop-blur-xl border-b border-zinc-900/50 z-20 safe-area-top">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-zinc-900 flex items-center justify-center font-black text-white text-xs border border-zinc-800 shadow-glow-sky">A</div>
             <h1 className="font-black text-white tracking-tighter text-xl">AGNI</h1>
@@ -341,39 +346,93 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>KERNEL_STABLE</div>
             <span>v5.0.0_RELEASE</span>
           </div>
+          {/* Mobile Status Dot */}
+          <div className="lg:hidden w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-between p-6 relative overflow-hidden pb-24 lg:pb-8">
+        {/* Dynamic Center Stage */}
+        <div className="flex-1 flex flex-col items-center justify-between p-4 md:p-6 relative overflow-hidden pb-[calc(5rem+var(--sab))] lg:pb-8">
+          
+          {/* Nova Visualizer Section */}
           <div className="flex-1 flex flex-col items-center justify-center w-full relative">
-            <div className="relative w-full aspect-square max-w-[min(70vw,360px)] lg:max-w-[480px] flex items-center justify-center">
+            <div className="relative w-full aspect-square max-w-[min(80vw,360px)] lg:max-w-[480px] flex items-center justify-center transition-all duration-700">
               <NovaVisualizer state={assistantState} emotion={emotion} inputAnalyser={inputAnalyser.current} outputAnalyser={outputAnalyser.current} />
-              {realtimeInput && <div className="absolute -bottom-10 md:-bottom-16 bg-zinc-900/95 backdrop-blur-2xl px-6 py-3 rounded-full border border-zinc-800 text-[10px] md:text-xs font-mono italic text-zinc-300 animate-in fade-in slide-in-from-bottom-4 text-center max-w-[85vw] truncate shadow-[0_10px_40px_rgba(0,0,0,0.5)]">"{realtimeInput}"</div>}
+              
+              {/* Transcription Overlay */}
+              {realtimeInput && (
+                <div className="absolute -bottom-12 bg-zinc-900/95 backdrop-blur-2xl px-6 py-3 rounded-full border border-zinc-800 text-[10px] md:text-xs font-mono italic text-zinc-300 animate-in fade-in zoom-in-95 text-center max-w-[90vw] truncate shadow-2xl">
+                  "{realtimeInput}"
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="w-full max-w-3xl space-y-6 lg:space-y-8 z-10">
-            <div className="h-24 lg:h-48 overflow-hidden mask-fade-vertical"><ChatWindow messages={messages.slice(-3)} isTyping={isProcessing} /></div>
-            <div className="relative group"><div className="absolute -inset-2 bg-sky-500/10 rounded-[2.5rem] blur opacity-0 group-focus-within:opacity-100 transition duration-700"></div><div className="relative flex items-center"><input value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleTextQuery()} placeholder="Sync command protocol..." className="w-full bg-zinc-900/60 border-2 border-zinc-800/50 rounded-[2rem] lg:rounded-[2.5rem] py-5 lg:py-6 pl-8 pr-16 outline-none focus:border-sky-500/30 text-white shadow-2xl transition-all text-sm lg:text-lg placeholder:text-zinc-600 backdrop-blur-md" /><button onClick={handleTextQuery} className="absolute right-3 lg:right-4 w-12 h-12 lg:w-14 lg:h-14 rounded-3xl bg-zinc-800 flex items-center justify-center hover:bg-sky-500 active:scale-95 transition-all text-white shadow-xl"><svg className="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7-7 7"/></svg></button></div></div>
-            <div className="flex gap-2 justify-center overflow-x-auto pb-4 scrollbar-hide">
-              {[ 
-                { id: 'STANDARD', icon: ICONS.BOLT, label: 'Fast' }, 
-                { id: 'LOCAL', icon: ICONS.SERVER, label: 'Local' },
-                { id: 'SEARCH', icon: ICONS.SEARCH, label: 'Search', restricted: plan === 'FREE' || plan === 'LEGACY' }, 
-                { id: 'DEEP', icon: ICONS.BRAIN, label: 'Deep', restricted: plan !== 'NEURAL' } 
-              ].map(m => (
-                <button key={m.id} onClick={() => !m.restricted && setMode(m.id as BrainMode)} className={`px-6 lg:px-8 py-3 rounded-full text-[10px] lg:text-xs font-black uppercase tracking-[0.15em] flex items-center gap-2 border transition-all whitespace-nowrap active:scale-95 ${m.restricted ? 'opacity-30 grayscale border-zinc-900 bg-zinc-950 text-zinc-600' : mode === m.id ? 'bg-sky-500 border-sky-400 text-white shadow-glow-sky' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:bg-zinc-800'}`}>{m.icon}{m.label} {m.restricted && '🔒'}</button>
-              ))}
+          {/* Interaction Zone */}
+          <div className="w-full max-w-3xl space-y-6 z-10">
+            {/* Chat Floating Layer */}
+            <div className="h-32 lg:h-48 overflow-hidden mask-fade-vertical">
+              <ChatWindow messages={messages.slice(-3)} isTyping={isProcessing} />
+            </div>
+
+            {/* Input & Mode Selector */}
+            <div className="space-y-4">
+              <div className="relative group">
+                <div className="absolute -inset-2 bg-sky-500/10 rounded-[2rem] blur opacity-0 group-focus-within:opacity-100 transition duration-700"></div>
+                <div className="relative flex items-center">
+                  <input 
+                    value={inputText} 
+                    onChange={(e) => setInputText(e.target.value)} 
+                    onKeyDown={(e) => e.key === 'Enter' && handleTextQuery()} 
+                    placeholder="Command sync..." 
+                    className="w-full bg-zinc-900/80 border-2 border-zinc-800/50 rounded-full py-4 lg:py-6 pl-6 pr-14 outline-none focus:border-sky-500/30 text-white shadow-2xl transition-all text-sm lg:text-lg placeholder:text-zinc-600 backdrop-blur-md" 
+                  />
+                  <button onClick={handleTextQuery} className="absolute right-2 w-11 h-11 lg:w-14 lg:h-14 rounded-full bg-zinc-800 flex items-center justify-center hover:bg-sky-500 active:scale-90 transition-all text-white shadow-xl">
+                    <svg className="w-5 h-5 lg:w-6 lg:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7-7 7"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Logic Engines Selector (Scrollable on mobile) */}
+              <div className="flex gap-2 justify-start md:justify-center overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 mask-fade-horizontal">
+                {[ 
+                  { id: 'STANDARD', icon: ICONS.BOLT, label: 'Fast' }, 
+                  { id: 'LOCAL', icon: ICONS.SERVER, label: 'Local' },
+                  { id: 'SEARCH', icon: ICONS.SEARCH, label: 'Search', restricted: plan === 'FREE' || plan === 'LEGACY' }, 
+                  { id: 'DEEP', icon: ICONS.BRAIN, label: 'Deep', restricted: plan !== 'NEURAL' } 
+                ].map(m => (
+                  <button 
+                    key={m.id} 
+                    onClick={() => !m.restricted && setMode(m.id as BrainMode)} 
+                    className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border transition-all whitespace-nowrap active:scale-95 flex-shrink-0 ${
+                      m.restricted ? 'opacity-30 grayscale border-zinc-900 bg-zinc-950 text-zinc-600' : 
+                      mode === m.id ? 'bg-sky-500 border-sky-400 text-white shadow-glow-sky' : 
+                      'bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800'
+                    }`}
+                  >
+                    {m.icon} {m.label} {m.restricted && '🔒'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-        <BottomNav onOpenDrawer={() => setIsSidebarOpen(true)} onOpenStats={() => setIsStatsOpen(true)} isLive={isLive} toggleLive={toggleLive} plan={plan} />
+        
+        {/* Mobile Navigation */}
+        <BottomNav 
+          onOpenDrawer={() => setIsSidebarOpen(true)} 
+          onOpenStats={() => setIsStatsOpen(true)} 
+          isLive={isLive} 
+          toggleLive={toggleLive} 
+          plan={plan} 
+        />
       </div>
 
       <style>{`
-        .mask-fade-vertical { mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent); }
+        .mask-fade-vertical { mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent); }
+        .mask-fade-horizontal { mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent); }
         .bg-radial-gradient { background: radial-gradient(circle at center, #0d0d15 0%, #050508 100%); }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .shadow-glow-sky { box-shadow: 0 0 30px rgba(14, 165, 233, 0.3); }
+        .shadow-glow-sky { box-shadow: 0 0 25px rgba(14, 165, 233, 0.4); }
         @supports (height: 100dvh) { .h-screen { height: 100dvh; } }
       `}</style>
     </div>
