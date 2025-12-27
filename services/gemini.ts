@@ -130,15 +130,20 @@ export const performFastQuery = async (prompt: string, history: ChatMessage[] = 
   return response.text || "Direct logic failure.";
 };
 
+/**
+ * Prosody Map optimized for gemini-2.5-flash-preview-tts.
+ * These instructions guide the model to adjust pace, pitch, and clarity 
+ * dynamically based on the requested emotion.
+ */
 const PROSODY_MAP: Record<Emotion, string> = {
-  neutral: "Say clearly: ",
-  happy: "Say cheerfully: ",
-  positive: "Say warmly: ",
-  calm: "Say softly: ",
-  urgent: "Say urgently: ",
-  frustrated: "Say firmly: ",
-  confused: "Say puzzled: ",
-  sad: "Say somberly: "
+  neutral: "In a clear, standard professional pace with perfect articulation: ",
+  happy: "With a cheerful, bright tone and energetic pace: ",
+  positive: "In a warm, steady, and highly audible voice: ",
+  calm: "In a soft, slightly slower, and very soothing tone: ",
+  urgent: "Urgently and quickly, but with sharp clarity to ensure every word is heard: ",
+  frustrated: "Firmly and clearly at a measured, serious pace: ",
+  confused: "Puzzled and slightly slower, enunciating each word carefully: ",
+  sad: "In a somber, slower pace with deep vocal clarity: "
 };
 
 export const generateSpeech = async (text: string, emotion: Emotion = 'neutral') => {

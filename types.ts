@@ -23,17 +23,14 @@ export interface SystemStats {
 
 export type Emotion = 'neutral' | 'happy' | 'positive' | 'calm' | 'urgent' | 'frustrated' | 'confused' | 'sad';
 
-export type AssistantState = 'IDLE' | 'LISTENING' | 'SPEAKING' | 'ERROR';
+export type AssistantState = 'IDLE' | 'LISTENING' | 'SPEAKING' | 'THINKING' | 'ERROR';
+
+export type AppView = 'LOGIN' | 'PLANS' | 'DASHBOARD';
+
+export type SubscriptionPlan = 'FREE' | 'PRO' | 'NEURAL' | 'LEGACY';
 
 export interface MediaState {
   isPlaying: boolean;
   title: string;
   artist: string;
-}
-
-export interface VirtualFile {
-  name: string;
-  type: 'file' | 'folder';
-  size?: string;
-  modified: string;
 }
