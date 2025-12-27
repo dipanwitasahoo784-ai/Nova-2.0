@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageRole, ChatMessage, SystemStats, AssistantState, Emotion, AppView, SubscriptionPlan } from './types';
-import { connectLive, decode, decodeAudioData, encode, performSearchQuery, performThinkingQuery, performFastQuery, generateSpeech } from './services/gemini';
+import { connectLive, decode, decodeAudioData, encode, performSearchQuery, performThinkingQuery, performFastQuery, performOllamaQuery, generateSpeech } from './services/gemini';
 import { ICONS } from './constants';
 import Terminal from './components/Terminal';
 import ChatWindow from './components/ChatWindow';
@@ -10,7 +10,7 @@ import NovaVisualizer from './components/NovaVisualizer';
 import LoginPage from './components/LoginPage';
 import BottomNav from './components/BottomNav';
 
-type BrainMode = 'STANDARD' | 'SEARCH' | 'DEEP' | 'FAST';
+type BrainMode = 'STANDARD' | 'SEARCH' | 'DEEP' | 'FAST' | 'LOCAL';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('LOGIN');
@@ -229,6 +229,8 @@ const App: React.FC = () => {
         grounding = res.grounding;
       } else if (mode === 'DEEP' && plan === 'NEURAL') {
         response = await performThinkingQuery(query, history);
+      } else if (mode === 'LOCAL') {
+        response = await performOllamaQuery(query, history, "llama3.1"); // Using beast recommendation
       } else {
         response = await performFastQuery(query, history);
       }
@@ -353,7 +355,12 @@ const App: React.FC = () => {
             <div className="h-24 lg:h-48 overflow-hidden mask-fade-vertical"><ChatWindow messages={messages.slice(-3)} isTyping={isProcessing} /></div>
             <div className="relative group"><div className="absolute -inset-2 bg-sky-500/10 rounded-[2.5rem] blur opacity-0 group-focus-within:opacity-100 transition duration-700"></div><div className="relative flex items-center"><input value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleTextQuery()} placeholder="Sync command protocol..." className="w-full bg-zinc-900/60 border-2 border-zinc-800/50 rounded-[2rem] lg:rounded-[2.5rem] py-5 lg:py-6 pl-8 pr-16 outline-none focus:border-sky-500/30 text-white shadow-2xl transition-all text-sm lg:text-lg placeholder:text-zinc-600 backdrop-blur-md" /><button onClick={handleTextQuery} className="absolute right-3 lg:right-4 w-12 h-12 lg:w-14 lg:h-14 rounded-3xl bg-zinc-800 flex items-center justify-center hover:bg-sky-500 active:scale-95 transition-all text-white shadow-xl"><svg className="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7-7 7"/></svg></button></div></div>
             <div className="flex gap-2 justify-center overflow-x-auto pb-4 scrollbar-hide">
-              {[ { id: 'STANDARD', icon: ICONS.BOLT, label: 'Fast' }, { id: 'SEARCH', icon: ICONS.SEARCH, label: 'Search', restricted: plan === 'FREE' || plan === 'LEGACY' }, { id: 'DEEP', icon: ICONS.BRAIN, label: 'Deep', restricted: plan !== 'NEURAL' } ].map(m => (
+              {[ 
+                { id: 'STANDARD', icon: ICONS.BOLT, label: 'Fast' }, 
+                { id: 'LOCAL', icon: ICONS.SERVER, label: 'Local' },
+                { id: 'SEARCH', icon: ICONS.SEARCH, label: 'Search', restricted: plan === 'FREE' || plan === 'LEGACY' }, 
+                { id: 'DEEP', icon: ICONS.BRAIN, label: 'Deep', restricted: plan !== 'NEURAL' } 
+              ].map(m => (
                 <button key={m.id} onClick={() => !m.restricted && setMode(m.id as BrainMode)} className={`px-6 lg:px-8 py-3 rounded-full text-[10px] lg:text-xs font-black uppercase tracking-[0.15em] flex items-center gap-2 border transition-all whitespace-nowrap active:scale-95 ${m.restricted ? 'opacity-30 grayscale border-zinc-900 bg-zinc-950 text-zinc-600' : mode === m.id ? 'bg-sky-500 border-sky-400 text-white shadow-glow-sky' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:bg-zinc-800'}`}>{m.icon}{m.label} {m.restricted && '🔒'}</button>
               ))}
             </div>

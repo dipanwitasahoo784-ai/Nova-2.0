@@ -130,6 +130,35 @@ export const performFastQuery = async (prompt: string, history: ChatMessage[] = 
   return response.text || "Direct logic failure.";
 };
 
+export const performOllamaQuery = async (prompt: string, history: ChatMessage[] = [], model: string = "llama3.1") => {
+  try {
+    const chatContext = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+    const fullPrompt = `${SYSTEM_PROMPT}\n\nCONVERSATION_HISTORY:\n${chatContext}\n\nUSER: ${prompt}\nAGNI:`;
+    
+    const response = await fetch("http://localhost:11434/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: model,
+        prompt: fullPrompt,
+        stream: false,
+        options: {
+          temperature: 0.7,
+          num_predict: 500
+        }
+      })
+    });
+
+    if (!response.ok) throw new Error("Ollama service unreachable.");
+    
+    const data = await response.json();
+    return data.response;
+  } catch (err) {
+    console.error("Ollama Error:", err);
+    throw new Error("Local engine failure. Ensure Ollama is running on port 11434.");
+  }
+};
+
 /**
  * Prosody Map optimized for gemini-2.5-flash-preview-tts.
  * These instructions guide the model to adjust pace, pitch, and clarity 
