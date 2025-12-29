@@ -25,9 +25,11 @@ const App: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
+  const [isMobileWriteOpen, setIsMobileWriteOpen] = useState(false);
   const [realtimeInput, setRealtimeInput] = useState('');
   const [queryCount, setQueryCount] = useState(0);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   
   const [stats, setStats] = useState<SystemStats>({
     cpu: 12, ram: 45, storage: 68, uptime: "00:00:00", latency: 0, networkStatus: 'optimal'
@@ -44,6 +46,16 @@ const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const recognitionRef = useRef<any>(null);
   const recognitionActive = useRef(false);
+
+  // Environment Detection
+  useEffect(() => {
+    const userAgent = navigator.userAgent.toLowerCase();
+    if (userAgent.indexOf(' electron/') > -1) {
+      setIsDesktop(true);
+      addLog("DESKTOP_BRIDGE: Native EXE process detected.");
+      addLog("HARDWARE: Direct GPU acceleration initialized.");
+    }
+  }, []);
 
   // Advanced Self-Correction Diagnostics
   const runDiagnostic = useCallback(async () => {
@@ -207,6 +219,7 @@ const App: React.FC = () => {
     const query = inputText;
     setInputText('');
     setAssistantState('THINKING');
+    setIsMobileWriteOpen(false); // Close mobile writing overlay on send
     setMessages(prev => [...prev, { role: MessageRole.USER, content: query, timestamp: Date.now() }]);
     setQueryCount(prev => prev + 1);
 
@@ -266,7 +279,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-[100dvh] w-full bg-[#050508] text-zinc-300 overflow-hidden flex-col lg:flex-row relative">
+    <div className={`flex h-[100dvh] w-full bg-[#050508] text-zinc-300 overflow-hidden flex-col lg:flex-row relative ${isDesktop ? 'rounded-lg border border-zinc-800' : ''}`}>
       {showDiagnostic && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center animate-in fade-in duration-500">
            <div className="text-center space-y-4">
@@ -318,9 +331,9 @@ const App: React.FC = () => {
            </div>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-between p-4 md:p-8 lg:p-12 pb-[calc(7rem+var(--sab))] lg:pb-12 overflow-hidden relative">
+        <div className={`flex-1 flex flex-col items-center justify-between p-4 md:p-8 lg:p-12 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-12 overflow-hidden relative transition-all duration-500 ${isMobileWriteOpen ? 'lg:translate-y-0 -translate-y-20' : ''}`}>
           <div className="flex-1 w-full flex flex-col items-center justify-center relative">
-            <div className="w-full max-w-[min(90vw,520px)] aspect-square relative group">
+            <div className={`w-full max-w-[min(90vw,520px)] aspect-square relative group transition-transform duration-700 ${isMobileWriteOpen ? 'scale-75 lg:scale-100' : ''}`}>
                <video ref={videoRef} autoPlay playsInline muted className={`absolute inset-0 w-full h-full object-cover rounded-full opacity-20 blur-xl pointer-events-none transition-opacity duration-1000 ${isCameraActive ? 'opacity-30' : 'opacity-0'}`} />
                <NovaVisualizer state={assistantState} emotion={emotion} inputAnalyser={inputAnalyser.current} outputAnalyser={outputAnalyser.current} stats={stats} />
                
@@ -330,7 +343,7 @@ const App: React.FC = () => {
                  </button>
                )}
 
-               {realtimeInput && (
+               {realtimeInput && !isMobileWriteOpen && (
                  <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 bg-[#0a0a0f]/95 backdrop-blur-3xl px-8 py-5 rounded-3xl border border-zinc-800 text-[10px] md:text-xs font-mono italic text-zinc-300 text-center max-w-[92vw] shadow-3xl animate-in slide-in-from-bottom-4 duration-500">
                    "{realtimeInput}"
                  </div>
@@ -338,7 +351,7 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Desktop/Wide Input Bar (Hidden on small mobile) */}
+          {/* Desktop Input Bar (Static) */}
           <div className="hidden lg:block w-full max-w-3xl space-y-6 z-10">
             <div className="h-40 overflow-hidden mask-fade-vertical">
               <ChatWindow messages={messages.slice(-3)} isTyping={isProcessing} />
@@ -357,12 +370,41 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Neural Floating Command Center (Mobile Only) */}
-        <BottomNav onOpenDrawer={() => setIsSidebarOpen(true)} onOpenStats={() => setIsStatsOpen(true)} isLive={isLive} toggleLive={toggleLive} plan={plan} />
+        {/* Neural Floating Scripting Overlay (Mobile Only) */}
+        {isMobileWriteOpen && (
+          <div className="lg:hidden fixed bottom-28 left-0 right-0 px-4 z-40 animate-in slide-in-from-bottom-6 duration-500">
+             <div className="bg-[#0f0f1a]/95 backdrop-blur-3xl border-2 border-sky-500/30 rounded-[2.5rem] p-3 shadow-3xl flex items-center gap-3 ring-1 ring-sky-500/10">
+                <input 
+                  autoFocus
+                  value={inputText} 
+                  onChange={(e) => setInputText(e.target.value)} 
+                  onKeyDown={(e) => e.key === 'Enter' && handleTextQuery()} 
+                  placeholder="Scripting protocol..." 
+                  className="flex-1 bg-transparent py-4 pl-6 outline-none text-white text-base placeholder:text-zinc-600" 
+                />
+                <button 
+                  onClick={handleTextQuery} 
+                  className="w-12 h-12 rounded-full bg-sky-500 text-white flex items-center justify-center active:scale-90 shadow-glow-sky"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7-7 7"/></svg>
+                </button>
+             </div>
+          </div>
+        )}
+
+        <BottomNav 
+          onOpenDrawer={() => setIsSidebarOpen(true)} 
+          onOpenStats={() => setIsStatsOpen(true)} 
+          isLive={isLive} 
+          toggleLive={toggleLive} 
+          plan={plan} 
+          onToggleWrite={() => setIsMobileWriteOpen(!isMobileWriteOpen)}
+          isWriteOpen={isMobileWriteOpen}
+        />
         
         {/* Overlay Chat Popover for Mobile */}
         {messages.length > 0 && (
-          <div className="lg:hidden absolute bottom-32 left-0 right-0 px-6 z-20 pointer-events-none overflow-hidden h-40">
+          <div className={`lg:hidden absolute left-0 right-0 px-6 z-20 pointer-events-none transition-all duration-700 ${isMobileWriteOpen ? 'bottom-52 h-24' : 'bottom-32 h-40'}`}>
              <div className="mask-fade-vertical">
                 <ChatWindow messages={messages.slice(-2)} isTyping={isProcessing} />
              </div>
