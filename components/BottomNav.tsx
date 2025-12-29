@@ -11,49 +11,39 @@ interface BottomNavProps {
 
 const BottomNav: React.FC<BottomNavProps> = ({ onOpenDrawer, onOpenStats, isLive, toggleLive, plan }) => {
   return (
-    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-[var(--sab)] pt-2 bg-gradient-to-t from-[#050508] via-[#08080c]/95 to-transparent backdrop-blur-md">
-      <div className="max-w-md mx-auto bg-zinc-900/80 border border-zinc-800/50 rounded-[2.5rem] p-2 flex items-center justify-between shadow-2xl overflow-hidden">
-        
-        {/* System Menu Button */}
-        <button 
-          onClick={onOpenDrawer}
-          className="flex flex-col items-center justify-center w-14 h-12 gap-0.5 text-zinc-500 active:scale-90 active:text-white transition-all"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-          <span className="text-[8px] font-black uppercase tracking-tighter">OS</span>
-        </button>
+    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-[calc(1.5rem+var(--sab))] pt-4">
+      {/* Neural Island Container */}
+      <div className="max-w-md mx-auto relative">
+        <div className="absolute -inset-1 bg-gradient-to-r from-sky-500/20 via-purple-500/10 to-emerald-500/20 blur-2xl opacity-50 rounded-full"></div>
+        <div className="relative bg-[#0d0d15]/90 border-2 border-zinc-800/80 rounded-[3rem] p-2 flex items-center justify-between shadow-3xl backdrop-blur-3xl overflow-hidden">
+          
+          <button onClick={onOpenDrawer} className="flex flex-col items-center justify-center w-14 h-14 text-zinc-500 active:scale-90 active:text-white transition-all group">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center transition-colors group-active:bg-zinc-800">
+               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" /></svg>
+            </div>
+          </button>
 
-        {/* Central Live Button */}
-        <button 
-          onClick={toggleLive}
-          className={`relative flex items-center gap-3 px-6 py-3 rounded-full transition-all active:scale-95 ${
-            isLive 
-            ? 'bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)]' 
-            : 'bg-white text-black shadow-xl'
-          }`}
-        >
-          <div className="relative">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-            </svg>
-            {isLive && <div className="absolute -top-1 -right-1 w-2 h-2 bg-white rounded-full animate-ping"></div>}
-          </div>
-          <span className="text-xs font-black uppercase tracking-widest">{isLive ? 'LIVE' : 'SYNC'}</span>
-        </button>
+          {/* Core Synthesis Button */}
+          <button onClick={toggleLive} className={`relative flex items-center gap-4 px-10 py-4.5 rounded-full transition-all active:scale-90 ${isLive ? 'bg-emerald-500 text-white shadow-glow-green' : 'bg-white text-black shadow-2xl'}`}>
+             <div className="relative flex items-center justify-center">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                {isLive && (
+                  <>
+                    <div className="absolute -inset-3 bg-white/40 rounded-full animate-ping"></div>
+                    <div className="absolute -inset-1 bg-white/60 rounded-full animate-pulse"></div>
+                  </>
+                )}
+             </div>
+             <span className="text-xs font-black uppercase tracking-[0.2em]">{isLive ? 'CONNECTED' : 'SYNC_OS'}</span>
+          </button>
 
-        {/* Telemetry Button */}
-        <button 
-          onClick={onOpenStats}
-          className="flex flex-col items-center justify-center w-14 h-12 gap-0.5 text-zinc-500 active:scale-90 active:text-white transition-all"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-          <span className="text-[8px] font-black uppercase tracking-tighter">DATA</span>
-        </button>
+          <button onClick={onOpenStats} className="flex flex-col items-center justify-center w-14 h-14 text-zinc-500 active:scale-90 active:text-white transition-all group">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center transition-colors group-active:bg-zinc-800">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            </div>
+          </button>
 
+        </div>
       </div>
     </div>
   );

@@ -1,18 +1,33 @@
 
 {
   "name": "Agni Neural Assistant",
-  "short_name": "AGNI",
-  "start_url": ".",
+  "short_name": "AGNI AI",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#050508",
   "theme_color": "#050508",
   "orientation": "portrait",
+  "description": "Next-generation Advanced Generative Neural Interface for professional and spiritual guidance.",
   "icons": [
     {
       "src": "https://img.icons8.com/ios-filled/512/ffffff/fire-element.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "https://img.icons8.com/ios-filled/192/ffffff/fire-element.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["productivity", "utilities", "spirituality"],
+  "screenshots": [
+    {
+      "src": "https://img.icons8.com/ios-filled/1024/ffffff/fire-element.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "label": "Neural Visualization"
     }
   ]
 }

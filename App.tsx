@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { MessageRole, ChatMessage, SystemStats, AssistantState, Emotion, AppView, SubscriptionPlan } from './types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { MessageRole, ChatMessage, SystemStats, AssistantState, Emotion, AppView, SubscriptionPlan, PLAN_DETAILS } from './types';
 import { connectLive, decode, decodeAudioData, encode, performSearchQuery, performThinkingQuery, performFastQuery, performOllamaQuery, generateSpeech } from './services/gemini';
 import { ICONS } from './constants';
 import Terminal from './components/Terminal';
@@ -26,11 +26,13 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [realtimeInput, setRealtimeInput] = useState('');
+  const [queryCount, setQueryCount] = useState(0);
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
   
   const [stats, setStats] = useState<SystemStats>({
     cpu: 12, ram: 45, storage: 68, uptime: "00:00:00", latency: 0, networkStatus: 'optimal'
   });
-  const [terminalLogs, setTerminalLogs] = useState<string[]>(["[SYSTEM] AGNI OS V5.0 KERNEL READY."]);
+  const [terminalLogs, setTerminalLogs] = useState<string[]>(["[KERNEL] AGNI ULTIMATE CORE V5.2 READY."]);
   
   const sessionPromise = useRef<any>(null);
   const inputAudioContext = useRef<AudioContext | null>(null);
@@ -39,23 +41,74 @@ const App: React.FC = () => {
   const activeSources = useRef<Set<AudioBufferSourceNode>>(new Set());
   const inputAnalyser = useRef<AnalyserNode | null>(null);
   const outputAnalyser = useRef<AnalyserNode | null>(null);
-  
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const frameIntervalRef = useRef<number | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const recognitionActive = useRef(false);
 
+  // Advanced Self-Correction Diagnostics
+  const runDiagnostic = useCallback(async () => {
+    setShowDiagnostic(true);
+    addLog("SENTINEL: Identifying neural bottlenecks...");
+    await new Promise(r => setTimeout(r, 600));
+    addLog("SENTINEL: Flushing audio buffer chains...");
+    nextStartTime.current = 0;
+    activeSources.current.forEach(s => { try { s.stop(); } catch(e) {} });
+    activeSources.current.clear();
+    await new Promise(r => setTimeout(r, 800));
+    addLog("SENTINEL: Protocol 'Radha Radha' fully synchronized.");
+    setShowDiagnostic(false);
+    setAssistantState('IDLE');
+  }, []);
+
+  // Zero-Error Wake Word Watchdog
   useEffect(() => {
-    const checkKeyStatus = async () => {
-      if (window.aistudio?.hasSelectedApiKey) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey && view !== 'LOGIN') {
-          addLog("SYSTEM: API Key missing. Requesting authorization...");
-          await window.aistudio.openSelectKey();
-        }
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (view === 'DASHBOARD' && !isLive && SpeechRecognition) {
+      if (!recognitionRef.current) {
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = true;
+        recognitionRef.current.interimResults = true;
+        recognitionRef.current.lang = 'en-US';
+        recognitionRef.current.onresult = (event: any) => {
+          const transcript = Array.from(event.results).map((r: any) => r[0].transcript).join('').toLowerCase();
+          if (transcript.includes('agni')) handleWakeEvent();
+        };
+        recognitionRef.current.onstart = () => { recognitionActive.current = true; };
+        recognitionRef.current.onend = () => { recognitionActive.current = false; };
       }
-    };
-    checkKeyStatus();
-  }, [view]);
+      
+      const watchdog = setInterval(() => {
+        if (!isLive && !recognitionActive.current && view === 'DASHBOARD') {
+          try { recognitionRef.current.start(); recognitionActive.current = true; } catch (e) {}
+        }
+      }, 5000);
+
+      return () => clearInterval(watchdog);
+    }
+  }, [view, isLive]);
+
+  const handleWakeEvent = async () => {
+    if (assistantState === 'WAKING' || assistantState === 'SPEAKING') return; 
+    setAssistantState('WAKING');
+    setEmotion('happy');
+    const greeting = "Radha Radha. I am AGNI. How can i help you today ?. ";
+    setMessages(prev => [...prev, { role: MessageRole.ASSISTANT, content: greeting, timestamp: Date.now() }]);
+    const audio = await generateSpeech(greeting, 'positive');
+    if (audio) await playB64Audio(audio);
+    setTimeout(() => { setAssistantState('IDLE'); }, 2000);
+  };
+
+  const handleStopAll = () => {
+    activeSources.current.forEach(source => { try { source.stop(); } catch (e) {} });
+    activeSources.current.clear();
+    nextStartTime.current = 0;
+    if (isLive) { sessionPromise.current?.then((s: any) => s.close()); setIsLive(false); stopCamera(); }
+    setAssistantState('IDLE');
+    setIsProcessing(false);
+    setRealtimeInput('');
+    setEmotion('neutral');
+    addLog("SYSTEM: Neural link safely terminated.");
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -70,11 +123,9 @@ const App: React.FC = () => {
   }, []);
 
   const handleLogin = async (user: string, pass: string) => {
+    addLog(`AUTH: Establishing secure tunnel for ${user}...`);
     await new Promise(resolve => setTimeout(resolve, 800));
-    addLog(`AUTH: Authenticated as ${user}.`);
-    if (window.aistudio?.openSelectKey) {
-      await window.aistudio.openSelectKey();
-    }
+    if (window.aistudio?.openSelectKey) await window.aistudio.openSelectKey();
     setView('PLANS');
   };
 
@@ -84,14 +135,12 @@ const App: React.FC = () => {
 
   const handleError = async (err: any) => {
     const msg = err?.message || String(err);
-    addLog(`ERROR: ${msg}`);
+    addLog(`CRITICAL: ${msg}`);
     setAssistantState('ERROR');
-
     if (msg.includes("Requested entity was not found") || msg.includes("API key")) {
-      addLog("RECOVERY: API Key issue detected. Re-authorizing via system dialog...");
-      if (window.aistudio?.openSelectKey) {
-        await window.aistudio.openSelectKey();
-      }
+      if (window.aistudio?.openSelectKey) await window.aistudio.openSelectKey();
+    } else {
+      await runDiagnostic();
     }
   };
 
@@ -107,10 +156,7 @@ const App: React.FC = () => {
       source.buffer = audioBuffer;
       source.connect(outputAnalyser.current!);
       outputAnalyser.current!.connect(outputAudioContext.current.destination);
-      source.onended = () => {
-        activeSources.current.delete(source);
-        if (activeSources.current.size === 0) setAssistantState('IDLE');
-      };
+      source.onended = () => { activeSources.current.delete(source); if (activeSources.current.size === 0) setAssistantState('IDLE'); };
       const startTime = Math.max(nextStartTime.current, outputAudioContext.current.currentTime);
       source.start(startTime);
       nextStartTime.current = startTime + audioBuffer.duration;
@@ -118,124 +164,61 @@ const App: React.FC = () => {
     } catch (err) { handleError(err); }
   };
 
-  const stopCamera = () => {
-    if (frameIntervalRef.current) {
-      clearInterval(frameIntervalRef.current);
-      frameIntervalRef.current = null;
-    }
-    if (videoRef.current?.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setIsCameraActive(false);
-    addLog("SYSTEM: Neural optics offline.");
-  };
-
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setIsCameraActive(true);
-        addLog("SYSTEM: Neural optics online.");
-      }
-    } catch (err) {
-      handleError("Camera access denied.");
-    }
+      if (videoRef.current) { videoRef.current.srcObject = stream; setIsCameraActive(true); addLog("OPTICS: Neural feed active."); }
+    } catch (err) { handleError("Camera feed rejected."); }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current?.srcObject) { (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop()); videoRef.current.srcObject = null; }
+    setIsCameraActive(false);
   };
 
   const toggleLive = async () => {
-    if (isLive) {
-      sessionPromise.current?.then((s: any) => s.close());
-      stopCamera();
-      setIsLive(false);
-      setAssistantState('IDLE');
-      addLog("SYSTEM: Live Link disconnected.");
-      return;
-    }
+    if (isLive) { handleStopAll(); return; }
+    const limit = PLAN_DETAILS[plan].queryLimit;
+    if (queryCount >= limit) { addLog("LIMIT: Link capacity reached."); setView('UPGRADE_REQUIRED'); return; }
 
     try {
-      addLog("SYSTEM: Establishing high-speed Live Link...");
+      addLog("SYSTEM: Synchronizing Radha Radha Link...");
       inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       inputAnalyser.current = inputAudioContext.current.createAnalyser();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
       sessionPromise.current = connectLive({
-        onopen: () => {
-          setIsLive(true);
-          addLog("SYSTEM: Live Link active. Listening...");
-          setAssistantState('LISTENING');
-          const source = inputAudioContext.current!.createMediaStreamSource(stream);
-          const scriptProcessor = inputAudioContext.current!.createScriptProcessor(4096, 1, 1);
-          scriptProcessor.onaudioprocess = (e) => {
-            const data = e.inputBuffer.getChannelData(0);
-            const int16 = new Int16Array(data.length);
-            for (let i = 0; i < data.length; i++) int16[i] = data[i] * 32768;
-            sessionPromise.current?.then((s: any) => s.sendRealtimeInput({ media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } }));
-          };
-          source.connect(inputAnalyser.current!);
-          source.connect(scriptProcessor);
-          scriptProcessor.connect(inputAudioContext.current!.destination);
-
-          frameIntervalRef.current = window.setInterval(() => {
-            if (isCameraActive && videoRef.current && canvasRef.current && sessionPromise.current) {
-              const canvas = canvasRef.current;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.drawImage(videoRef.current!, 0, 0, canvas.width, canvas.height);
-                const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-                sessionPromise.current.then((s: any) => {
-                   s.sendRealtimeInput({ media: { data: base64, mimeType: 'image/jpeg' } });
-                });
-              }
-            }
-          }, 1000);
-        },
+        onopen: () => { setIsLive(true); addLog("LINK: High-bandwidth stream active."); setAssistantState('LISTENING'); },
         onmessage: async (msg: any) => {
-          if (msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
-             await playB64Audio(msg.serverContent.modelTurn.parts[0].inlineData.data);
-          }
-          if (msg.serverContent?.inputTranscription) {
-            setRealtimeInput(msg.serverContent.inputTranscription.text);
-          }
+          if (msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data) await playB64Audio(msg.serverContent.modelTurn.parts[0].inlineData.data);
+          if (msg.serverContent?.inputTranscription) setRealtimeInput(msg.serverContent.inputTranscription.text);
         },
         onerror: (e: any) => handleError(e),
-        onclose: () => {
-           setIsLive(false);
-           stopCamera();
-           addLog("SYSTEM: Live Link closed by server.");
-        }
+        onclose: () => { setIsLive(false); stopCamera(); addLog("LINK: Terminal connection closed."); }
       });
     } catch (err) { handleError(err); }
   };
 
   const handleTextQuery = async () => {
     if (isProcessing || !inputText.trim()) return;
+    const limit = PLAN_DETAILS[plan].queryLimit;
+    if (queryCount >= limit) { addLog("LIMIT: Query budget depleted."); setView('UPGRADE_REQUIRED'); return; }
+
     setIsProcessing(true);
     const query = inputText;
     setInputText('');
     setAssistantState('THINKING');
     setMessages(prev => [...prev, { role: MessageRole.USER, content: query, timestamp: Date.now() }]);
+    setQueryCount(prev => prev + 1);
 
     try {
       let response = "";
-      let grounding: any[] = [];
-      const history = [...messages];
+      if (mode === 'SEARCH' && plan !== 'FREE') { const res = await performSearchQuery(query, messages); response = res.text; }
+      else if (mode === 'DEEP' && plan === 'NEURAL') response = await performThinkingQuery(query, messages);
+      else response = await performFastQuery(query, messages);
+      
+      if (!response.toLowerCase().includes("radha radha")) response = "Radha Radha. " + response;
 
-      if (mode === 'SEARCH' && (plan !== 'FREE' && plan !== 'LEGACY')) {
-        const res = await performSearchQuery(query, history);
-        response = res.text;
-        grounding = res.grounding;
-      } else if (mode === 'DEEP' && plan === 'NEURAL') {
-        response = await performThinkingQuery(query, history);
-      } else if (mode === 'LOCAL') {
-        response = await performOllamaQuery(query, history, "llama3.1");
-      } else {
-        response = await performFastQuery(query, history);
-      }
-
-      setMessages(prev => [...prev, { role: MessageRole.ASSISTANT, content: response, timestamp: Date.now(), grounding }]);
+      setMessages(prev => [...prev, { role: MessageRole.ASSISTANT, content: response, timestamp: Date.now() }]);
       const audio = await generateSpeech(response, emotion);
       if (audio) await playB64Audio(audio);
       else setAssistantState('IDLE');
@@ -244,50 +227,39 @@ const App: React.FC = () => {
   };
 
   if (view === 'LOGIN') return <LoginPage onLogin={handleLogin} />;
-
-  if (view === 'PLANS') {
+  
+  if (view === 'PLANS' || view === 'UPGRADE_REQUIRED') {
     return (
-      <div className="h-[100dvh] w-full bg-[#050508] overflow-y-auto smooth-scroll overflow-x-hidden">
-        <div className="min-h-full w-full flex flex-col items-center justify-center p-4 md:p-6 lg:p-12">
-          <div className="max-w-6xl w-full space-y-8 md:space-y-12 py-12 safe-area-bottom">
-            <div className="text-center space-y-4 px-4 animate-in fade-in slide-in-from-top-4 duration-700">
-              <h2 className="text-4xl md:text-6xl font-black text-white tracking-tighter">Neural Tiers</h2>
-              <p className="text-zinc-500 max-w-lg mx-auto text-sm md:text-base font-medium">Select the processing tier that matches your interface requirements.</p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 px-4">
-              {[
-                { id: 'LEGACY', name: 'Original', price: 'Legacy', features: ['Stable Kernel', 'Standard Logic', 'Standard Voice'] },
-                { id: 'FREE', name: 'Standard', price: '$0', features: ['Core Intelligence', 'Priority Fast', 'Basic Sync'] },
-                { id: 'PRO', name: 'Deep Pro', price: '$20', features: ['Search Grounding', 'Optimized Flow', 'Enhanced Live'] },
-                { id: 'NEURAL', name: 'Neural Max', price: '$40', features: ['Full Reasoning', 'Knowledge Graph', 'Vision Sensors'] }
-              ].map((p, idx) => (
-                <div key={p.id} 
-                  style={{ animationDelay: `${idx * 100}ms` }}
-                  className="bg-zinc-900/50 border border-zinc-800 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] flex flex-col justify-between hover:border-sky-500/50 transition-all group animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both"
-                >
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="text-zinc-400 font-bold uppercase tracking-[0.2em] text-[10px]">{p.name}</h3>
-                      <div className="text-3xl font-black text-white mt-2">{p.price}<span className="text-sm font-medium text-zinc-600">/mo</span></div>
-                    </div>
-                    <ul className="space-y-4">
-                      {p.features.map(f => (
-                        <li key={f} className="flex items-center gap-3 text-xs text-zinc-300">
-                          <div className="w-1.5 h-1.5 bg-sky-500 rounded-full flex-shrink-0"></div> {f}
-                        </li>
-                      ))}
-                    </ul>
+      <div className="h-[100dvh] w-full bg-[#050508] overflow-y-auto smooth-scroll flex flex-col items-center justify-center p-6 gap-10">
+        <div className="text-center animate-in fade-in duration-1000">
+          <h2 className="text-4xl font-black text-white tracking-tighter uppercase mb-2">Neural Tiering</h2>
+          <p className="text-sky-500 text-[10px] font-black uppercase tracking-[0.4em]">Optimized Protocol Capacity</p>
+        </div>
+        <div className="max-w-6xl w-full grid grid-cols-1 md:grid-cols-3 gap-6">
+          {(['FREE', 'PRO', 'NEURAL'] as SubscriptionPlan[]).map((p) => {
+            const detail = PLAN_DETAILS[p];
+            const isSelected = plan === p;
+            return (
+              <div key={p} className={`bg-zinc-900/40 border-2 p-8 rounded-[2.5rem] flex flex-col justify-between transition-all duration-500 active:scale-95 group ${isSelected ? 'border-sky-500 shadow-glow-sky' : 'border-zinc-800'}`}>
+                <div>
+                  <div className="flex justify-between items-baseline mb-6">
+                    <h3 className="text-white font-black text-2xl uppercase">{detail.name}</h3>
+                    <span className="text-sky-500 font-mono font-black text-lg">{detail.price}</span>
                   </div>
-                  <button 
-                    onClick={() => { setPlan(p.id as SubscriptionPlan); setView('DASHBOARD'); }}
-                    className="mt-8 w-full py-4 rounded-2xl bg-zinc-800 text-white font-black uppercase text-[10px] tracking-widest group-hover:bg-sky-500 active:scale-95 transition-all shadow-xl"
-                  >
-                    Initialize
-                  </button>
+                  <ul className="space-y-3 mb-8">
+                    {detail.features.map(f => (
+                      <li key={f} className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 bg-sky-500 rounded-full" /> {f}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              ))}
-            </div>
-          </div>
+                <button onClick={() => { setPlan(p); setView('DASHBOARD'); if(p === 'FREE') setQueryCount(0); }} className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest transition-all ${isSelected ? 'bg-sky-500 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
+                  {isSelected ? 'ACTIVE_LINK' : 'INITIALIZE'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -295,145 +267,123 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-[100dvh] w-full bg-[#050508] text-zinc-300 overflow-hidden flex-col lg:flex-row relative">
-      {/* Mobile Drawers Backdrop */}
-      {(isSidebarOpen || isStatsOpen) && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] lg:hidden transition-opacity duration-300 animate-in fade-in" 
-             onClick={() => { setIsSidebarOpen(false); setIsStatsOpen(false); }} />
+      {showDiagnostic && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center animate-in fade-in duration-500">
+           <div className="text-center space-y-4">
+              <div className="w-16 h-16 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto shadow-glow-sky"></div>
+              <h2 className="text-white font-black uppercase tracking-[0.4em] text-xs">Diagnostic Watchdog Active</h2>
+              <p className="text-sky-500 font-mono text-[9px] animate-pulse">REPAIRING_NEURAL_LINKS...</p>
+           </div>
+        </div>
       )}
 
-      {/* Left Drawer (System) */}
-      <div className={`fixed inset-y-0 left-0 z-[70] w-[85vw] max-w-80 bg-[#08080c] border-r border-zinc-900/50 flex flex-col transition-transform duration-500 lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-8 flex items-center justify-between safe-area-top">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-2xl bg-zinc-900 flex items-center justify-center font-black text-white shadow-lg border border-zinc-800">A</div>
-            <div><h1 className="font-bold text-lg text-white">AGNI OS</h1><span className="text-[9px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full font-black uppercase tracking-widest">{plan}</span></div>
+      {/* DESKTOP SIDEBAR */}
+      <div className={`fixed inset-y-0 left-0 z-[70] w-[85vw] max-w-80 bg-[#08080c]/98 backdrop-blur-2xl border-r border-zinc-900/50 flex flex-col transition-transform duration-500 lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-8 flex items-center gap-4 safe-area-top">
+          <div className="w-12 h-12 rounded-2xl bg-zinc-900 border-2 border-zinc-800 flex items-center justify-center font-black text-white shadow-glow-sky text-xl">A</div>
+          <div className="flex flex-col">
+            <h1 className="font-black text-white tracking-tight text-sm mb-1 uppercase">AGNI ULTIMATE</h1>
+            <span className="text-[7px] text-zinc-500 font-mono tracking-widest">KERNEL_ALPHA_V5.2</span>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 space-y-8 smooth-scroll pb-24">
-           <div className="space-y-4">
-              <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] ml-1">Optics Module</p>
-              <button onClick={isCameraActive ? stopCamera : startCamera} className={`w-full p-6 rounded-3xl border transition-all flex items-center gap-4 active:scale-95 ${isCameraActive ? 'bg-sky-500/10 border-sky-500/50 text-sky-400' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}>
-                    <div className={`w-3 h-3 rounded-full ${isCameraActive ? 'bg-sky-500 animate-pulse' : 'bg-zinc-700'}`}></div>
-                    <span className="text-xs font-black uppercase tracking-widest">Vision Sensor</span>
-                </button>
-                {isCameraActive && (
-                  <div className="relative rounded-3xl overflow-hidden border border-zinc-800 aspect-video bg-black group shadow-2xl"><video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover grayscale brightness-50 contrast-125" /><canvas ref={canvasRef} width="320" height="240" className="hidden" /></div>
-                )}
+        <div className="flex-1 overflow-y-auto px-6 space-y-6 pb-24 lg:pb-8 scrollbar-hide">
+          <button onClick={isCameraActive ? stopCamera : startCamera} className={`w-full p-6 rounded-3xl border-2 transition-all flex items-center gap-4 active:scale-95 ${isCameraActive ? 'bg-sky-500/10 border-sky-500/50 text-sky-400' : 'bg-zinc-900/50 border-zinc-800 text-zinc-500'}`}>
+            <div className={`w-2 h-2 rounded-full ${isCameraActive ? 'bg-sky-500 animate-pulse' : 'bg-zinc-700'}`} />
+            <span className="text-[10px] font-black uppercase tracking-widest">Neural Optics</span>
+          </button>
+          <Terminal logs={terminalLogs} />
+          <button onClick={() => setView('PLANS')} className="w-full p-5 rounded-[2rem] bg-zinc-900/30 border border-zinc-800 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Tier Selection</button>
+        </div>
+      </div>
+
+      {/* CENTER IMMERSIVE STAGE */}
+      <div className="flex-1 flex flex-col relative bg-radial-gradient h-full">
+        {/* Immersive Mobile Header */}
+        <div className="flex lg:hidden items-center justify-between px-6 py-5 bg-gradient-to-b from-black/80 to-transparent safe-area-top z-40">
+           <div className="flex items-center gap-3">
+             <div className="w-10 h-10 rounded-xl bg-zinc-900/50 border border-zinc-800 flex items-center justify-center font-black text-white" onClick={() => setIsSidebarOpen(true)}>A</div>
+             <div>
+               <h1 className="text-sm font-black text-white tracking-tighter uppercase leading-none mb-0.5">AGNI</h1>
+               <div className="flex items-center gap-1.5">
+                 <div className="w-1 h-1 bg-sky-500 rounded-full animate-pulse" />
+                 <span className="text-[8px] font-black text-zinc-500 tracking-widest uppercase">{plan}_LINK_SYNC</span>
+               </div>
+             </div>
            </div>
-           <Terminal logs={terminalLogs} />
-        </div>
-        <div className="p-6 border-t border-zinc-900/50 bg-[#08080c] grid grid-cols-2 gap-3 pb-[calc(1.5rem+var(--sab))]">
-           <button onClick={() => setView('PLANS')} className="py-4 bg-zinc-900 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-zinc-800 active:bg-zinc-800 transition-colors">Plan</button>
-           <button onClick={() => setView('LOGIN')} className="py-4 bg-zinc-900 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-zinc-800 active:bg-zinc-800 transition-colors">Exit</button>
-        </div>
-      </div>
-
-      {/* Right Drawer (Telemetry) */}
-      <div className={`fixed inset-y-0 right-0 z-[70] w-[85vw] max-w-80 bg-[#08080c] border-l border-zinc-900/50 flex flex-col transition-transform duration-500 lg:hidden ${isStatsOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-          <div className="p-8 safe-area-top"><h2 className="text-xl font-black text-white tracking-tighter uppercase">Neural Telemetry</h2></div>
-          <div className="flex-1 overflow-y-auto px-6 pb-24 smooth-scroll"><SystemDashboard stats={stats} /></div>
-      </div>
-
-      {/* Main Container */}
-      <div className="flex-1 flex flex-col relative bg-radial-gradient h-[100dvh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 md:px-8 md:py-6 bg-[#08080c]/50 backdrop-blur-xl border-b border-zinc-900/50 z-20 safe-area-top">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-zinc-900 flex items-center justify-center font-black text-white text-xs border border-zinc-800 shadow-glow-sky">A</div>
-            <h1 className="font-black text-white tracking-tighter text-xl">AGNI</h1>
-          </div>
-          <div className="hidden lg:flex items-center gap-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-            <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>KERNEL_STABLE</div>
-            <span>v5.0.0_RELEASE</span>
-          </div>
-          {/* Mobile Status Dot */}
-          <div className="lg:hidden w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+           <div className="flex items-center gap-2">
+              <div className="bg-zinc-900/80 px-3 py-1.5 rounded-full border border-zinc-800 text-[8px] font-mono text-zinc-400 uppercase tracking-tighter">Budget: {PLAN_DETAILS[plan].queryLimit === Infinity ? '∞' : `${queryCount}/${PLAN_DETAILS[plan].queryLimit}`}</div>
+              <button className="p-2 rounded-xl bg-zinc-900/50 border border-zinc-800" onClick={() => setIsStatsOpen(true)}>
+                <svg className="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              </button>
+           </div>
         </div>
 
-        {/* Dynamic Center Stage */}
-        <div className="flex-1 flex flex-col items-center justify-between p-4 md:p-6 relative overflow-hidden pb-[calc(5rem+var(--sab))] lg:pb-8">
-          
-          {/* Nova Visualizer Section */}
-          <div className="flex-1 flex flex-col items-center justify-center w-full relative">
-            <div className="relative w-full aspect-square max-w-[min(80vw,360px)] lg:max-w-[480px] flex items-center justify-center transition-all duration-700">
-              <NovaVisualizer state={assistantState} emotion={emotion} inputAnalyser={inputAnalyser.current} outputAnalyser={outputAnalyser.current} />
-              
-              {/* Transcription Overlay */}
-              {realtimeInput && (
-                <div className="absolute -bottom-12 bg-zinc-900/95 backdrop-blur-2xl px-6 py-3 rounded-full border border-zinc-800 text-[10px] md:text-xs font-mono italic text-zinc-300 animate-in fade-in zoom-in-95 text-center max-w-[90vw] truncate shadow-2xl">
-                  "{realtimeInput}"
-                </div>
-              )}
+        <div className="flex-1 flex flex-col items-center justify-between p-4 md:p-8 lg:p-12 pb-[calc(7rem+var(--sab))] lg:pb-12 overflow-hidden relative">
+          <div className="flex-1 w-full flex flex-col items-center justify-center relative">
+            <div className="w-full max-w-[min(90vw,520px)] aspect-square relative group">
+               <video ref={videoRef} autoPlay playsInline muted className={`absolute inset-0 w-full h-full object-cover rounded-full opacity-20 blur-xl pointer-events-none transition-opacity duration-1000 ${isCameraActive ? 'opacity-30' : 'opacity-0'}`} />
+               <NovaVisualizer state={assistantState} emotion={emotion} inputAnalyser={inputAnalyser.current} outputAnalyser={outputAnalyser.current} stats={stats} />
+               
+               {(assistantState !== 'IDLE' || isLive || isProcessing) && (
+                 <button onClick={handleStopAll} className="absolute bottom-4 right-4 md:bottom-10 md:right-10 w-14 h-14 md:w-20 md:h-20 bg-rose-600/90 hover:bg-rose-500 text-white rounded-full flex items-center justify-center shadow-2xl active:scale-90 z-50 animate-in zoom-in duration-300 backdrop-blur-md border border-rose-500/50">
+                   <svg className="w-6 h-6 md:w-8 md:h-8 fill-current" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+                 </button>
+               )}
+
+               {realtimeInput && (
+                 <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 bg-[#0a0a0f]/95 backdrop-blur-3xl px-8 py-5 rounded-3xl border border-zinc-800 text-[10px] md:text-xs font-mono italic text-zinc-300 text-center max-w-[92vw] shadow-3xl animate-in slide-in-from-bottom-4 duration-500">
+                   "{realtimeInput}"
+                 </div>
+               )}
             </div>
           </div>
 
-          {/* Interaction Zone */}
-          <div className="w-full max-w-3xl space-y-6 z-10">
-            {/* Chat Floating Layer */}
-            <div className="h-32 lg:h-48 overflow-hidden mask-fade-vertical">
+          {/* Desktop/Wide Input Bar (Hidden on small mobile) */}
+          <div className="hidden lg:block w-full max-w-3xl space-y-6 z-10">
+            <div className="h-40 overflow-hidden mask-fade-vertical">
               <ChatWindow messages={messages.slice(-3)} isTyping={isProcessing} />
             </div>
-
-            {/* Input & Mode Selector */}
             <div className="space-y-4">
-              <div className="relative group">
-                <div className="absolute -inset-2 bg-sky-500/10 rounded-[2rem] blur opacity-0 group-focus-within:opacity-100 transition duration-700"></div>
-                <div className="relative flex items-center">
-                  <input 
-                    value={inputText} 
-                    onChange={(e) => setInputText(e.target.value)} 
-                    onKeyDown={(e) => e.key === 'Enter' && handleTextQuery()} 
-                    placeholder="Command sync..." 
-                    className="w-full bg-zinc-900/80 border-2 border-zinc-800/50 rounded-full py-4 lg:py-6 pl-6 pr-14 outline-none focus:border-sky-500/30 text-white shadow-2xl transition-all text-sm lg:text-lg placeholder:text-zinc-600 backdrop-blur-md" 
-                  />
-                  <button onClick={handleTextQuery} className="absolute right-2 w-11 h-11 lg:w-14 lg:h-14 rounded-full bg-zinc-800 flex items-center justify-center hover:bg-sky-500 active:scale-90 transition-all text-white shadow-xl">
-                    <svg className="w-5 h-5 lg:w-6 lg:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7-7 7"/></svg>
-                  </button>
+              <div className="relative group flex items-center gap-3">
+                <button onClick={toggleLive} className={`flex-shrink-0 w-16 h-16 rounded-full border-2 transition-all flex items-center justify-center shadow-2xl ${isLive ? 'bg-emerald-500 border-emerald-400 text-white shadow-glow-green animate-pulse' : 'bg-zinc-900/90 border-zinc-800 text-zinc-500 hover:text-white'}`}>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                </button>
+                <div className="relative flex-1">
+                  <input value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleTextQuery()} placeholder="Radha Radha..." className="w-full bg-zinc-900/90 border-2 border-zinc-800 rounded-[2rem] py-5 pl-8 pr-20 outline-none focus:border-sky-500/50 text-white shadow-2xl transition-all text-base backdrop-blur-2xl placeholder:text-zinc-700" />
+                  <button onClick={handleTextQuery} className="absolute right-3 top-3 bottom-3 w-12 h-12 rounded-full bg-zinc-800 hover:bg-sky-500 transition-all text-white flex items-center justify-center active:scale-90 shadow-xl"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7-7 7"/></svg></button>
                 </div>
-              </div>
-
-              {/* Logic Engines Selector (Scrollable on mobile) */}
-              <div className="flex gap-2 justify-start md:justify-center overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 mask-fade-horizontal">
-                {[ 
-                  { id: 'STANDARD', icon: ICONS.BOLT, label: 'Fast' }, 
-                  { id: 'LOCAL', icon: ICONS.SERVER, label: 'Local' },
-                  { id: 'SEARCH', icon: ICONS.SEARCH, label: 'Search', restricted: plan === 'FREE' || plan === 'LEGACY' }, 
-                  { id: 'DEEP', icon: ICONS.BRAIN, label: 'Deep', restricted: plan !== 'NEURAL' } 
-                ].map(m => (
-                  <button 
-                    key={m.id} 
-                    onClick={() => !m.restricted && setMode(m.id as BrainMode)} 
-                    className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border transition-all whitespace-nowrap active:scale-95 flex-shrink-0 ${
-                      m.restricted ? 'opacity-30 grayscale border-zinc-900 bg-zinc-950 text-zinc-600' : 
-                      mode === m.id ? 'bg-sky-500 border-sky-400 text-white shadow-glow-sky' : 
-                      'bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800'
-                    }`}
-                  >
-                    {m.icon} {m.label} {m.restricted && '🔒'}
-                  </button>
-                ))}
               </div>
             </div>
           </div>
         </div>
+
+        {/* Neural Floating Command Center (Mobile Only) */}
+        <BottomNav onOpenDrawer={() => setIsSidebarOpen(true)} onOpenStats={() => setIsStatsOpen(true)} isLive={isLive} toggleLive={toggleLive} plan={plan} />
         
-        {/* Mobile Navigation */}
-        <BottomNav 
-          onOpenDrawer={() => setIsSidebarOpen(true)} 
-          onOpenStats={() => setIsStatsOpen(true)} 
-          isLive={isLive} 
-          toggleLive={toggleLive} 
-          plan={plan} 
-        />
+        {/* Overlay Chat Popover for Mobile */}
+        {messages.length > 0 && (
+          <div className="lg:hidden absolute bottom-32 left-0 right-0 px-6 z-20 pointer-events-none overflow-hidden h-40">
+             <div className="mask-fade-vertical">
+                <ChatWindow messages={messages.slice(-2)} isTyping={isProcessing} />
+             </div>
+          </div>
+        )}
       </div>
 
+      {/* RIGHT TELEMETRY DRAWER */}
+      <div className={`fixed inset-y-0 right-0 z-[70] w-[85vw] max-w-80 bg-[#08080c]/98 backdrop-blur-2xl border-l border-zinc-900/50 flex flex-col transition-transform duration-500 lg:relative lg:translate-x-0 ${isStatsOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="p-8 safe-area-top"><h2 className="text-xl font-black text-white uppercase tracking-tighter">DATA CLUSTER</h2></div>
+        <div className="flex-1 overflow-y-auto px-6 pb-24 lg:pb-8 scrollbar-hide"><SystemDashboard stats={stats} /></div>
+      </div>
+
+      {(isSidebarOpen || isStatsOpen) && <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[60] lg:hidden animate-in fade-in duration-500" onClick={() => { setIsSidebarOpen(false); setIsStatsOpen(false); }} />}
+      
       <style>{`
-        .mask-fade-vertical { mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent); }
-        .mask-fade-horizontal { mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent); }
-        .bg-radial-gradient { background: radial-gradient(circle at center, #0d0d15 0%, #050508 100%); }
+        .mask-fade-vertical { mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent); }
+        .shadow-glow-sky { box-shadow: 0 0 35px rgba(14, 165, 233, 0.4); }
+        .shadow-glow-green { box-shadow: 0 0 35px rgba(16, 185, 129, 0.4); }
+        .bg-radial-gradient { background: radial-gradient(circle at center, #0d0d18 0%, #050508 100%); }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .shadow-glow-sky { box-shadow: 0 0 25px rgba(14, 165, 233, 0.4); }
-        @supports (height: 100dvh) { .h-screen { height: 100dvh; } }
       `}</style>
     </div>
   );

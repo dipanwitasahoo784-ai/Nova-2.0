@@ -12,7 +12,7 @@ const tools: FunctionDeclaration[] = [
         emotion: { 
           type: Type.STRING, 
           enum: ["neutral", "positive", "calm", "urgent", "confused", "sad", "happy", "frustrated"],
-          description: "NOVA's current internal emotional state."
+          description: "Internal emotional state of AGNI."
         },
         state: {
           type: Type.STRING,
@@ -22,36 +22,7 @@ const tools: FunctionDeclaration[] = [
       },
       required: ["emotion"]
     },
-    description: "Synchronizes internal personality and system state with the visual interface."
-  },
-  {
-    name: "control_laptop",
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        action: { 
-          type: Type.STRING, 
-          enum: ["play_music", "stop_music", "open_app", "close_app", "system_status", "adjust_volume"],
-          description: "The system command to execute."
-        },
-        target: { 
-          type: Type.STRING, 
-          description: "The name of the app, song, or detail for the action." 
-        }
-      },
-      required: ["action"]
-    },
-    description: "Allows NOVA to control the user's laptop environment."
-  },
-  {
-    name: "read_system_logs",
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        lines: { type: Type.NUMBER, description: "Number of most recent log lines to read." }
-      }
-    },
-    description: "Allows NOVA to monitor simulated terminal errors and self-correct."
+    description: "Synchronizes personality and system state with the visual interface."
   }
 ];
 
@@ -64,13 +35,13 @@ const formatHistory = (history: ChatMessage[], currentPrompt: string) => {
     role: 'user',
     parts: [{ text: currentPrompt }]
   });
-  return formatted.slice(-10); // Maintain a rolling 10-message context window
+  return formatted.slice(-12); // Rolling context
 };
 
 export const connectLive = (callbacks: any, isDegraded: boolean = false) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const instruction = isDegraded 
-    ? `${SYSTEM_PROMPT}\nNETWORK_ALERT: High latency detected. Respond very concisely.`
+    ? `${SYSTEM_PROMPT}\nNETWORK_ALERT: Response limit active. Be brief.`
     : SYSTEM_PROMPT;
 
   return ai.live.connect({
@@ -100,7 +71,7 @@ export const performSearchQuery = async (prompt: string, history: ChatMessage[] 
     },
   });
   return {
-    text: response.text || "Neural search link failure.",
+    text: response.text || "Neural search timeout.",
     grounding: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
   };
 };
@@ -115,7 +86,7 @@ export const performThinkingQuery = async (prompt: string, history: ChatMessage[
       systemInstruction: SYSTEM_PROMPT
     },
   });
-  return response.text || "Cognitive module failure.";
+  return response.text || "Cognitive module timeout.";
 };
 
 export const performFastQuery = async (prompt: string, history: ChatMessage[] = []) => {
@@ -127,7 +98,7 @@ export const performFastQuery = async (prompt: string, history: ChatMessage[] = 
       systemInstruction: SYSTEM_PROMPT
     },
   });
-  return response.text || "Direct logic failure.";
+  return response.text || "Sequence link failure.";
 };
 
 export const performOllamaQuery = async (prompt: string, history: ChatMessage[] = [], model: string = "llama3.1") => {
@@ -142,46 +113,39 @@ export const performOllamaQuery = async (prompt: string, history: ChatMessage[] 
         model: model,
         prompt: fullPrompt,
         stream: false,
-        options: {
-          temperature: 0.7,
-          num_predict: 500
-        }
+        options: { temperature: 0.7, num_predict: 500 }
       })
     });
 
-    if (!response.ok) throw new Error("Ollama service unreachable.");
-    
+    if (!response.ok) throw new Error("Ollama link severed.");
     const data = await response.json();
     return data.response;
   } catch (err) {
-    console.error("Ollama Error:", err);
-    throw new Error("Local engine failure. Ensure Ollama is running on port 11434.");
+    throw new Error("Local engine failure. Ensure Ollama is active on port 11434.");
   }
 };
 
-/**
- * Prosody Map optimized for gemini-2.5-flash-preview-tts.
- * These instructions guide the model to adjust pace, pitch, and clarity 
- * dynamically based on the requested emotion.
- */
 const PROSODY_MAP: Record<Emotion, string> = {
-  neutral: "In a clear, standard professional pace with perfect articulation: ",
-  happy: "With a cheerful, bright tone and energetic pace: ",
-  positive: "In a warm, steady, and highly audible voice: ",
-  calm: "In a soft, slightly slower, and very soothing tone: ",
-  urgent: "Urgently and quickly, but with sharp clarity to ensure every word is heard: ",
-  frustrated: "Firmly and clearly at a measured, serious pace: ",
-  confused: "Puzzled and slightly slower, enunciating each word carefully: ",
-  sad: "In a somber, slower pace with deep vocal clarity: "
+  neutral: "Radha Radha. With absolute clarity: ",
+  happy: "Radha Radha! With immense joy: ",
+  positive: "Radha Radha. In a warm, steady voice: ",
+  calm: "Radha Radha. In a soothing, peaceful pace: ",
+  urgent: "Radha Radha! Alert! Immediately: ",
+  frustrated: "Radha Radha. Firmly: ",
+  confused: "Radha Radha... Puzzled: ",
+  sad: "Radha Radha. Somberly: "
 };
 
 export const generateSpeech = async (text: string, emotion: Emotion = 'neutral') => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prosodyPrefix = PROSODY_MAP[emotion] || PROSODY_MAP.neutral;
   
+  // Clean text of existing Radha Radha prefixes to avoid double greeting
+  const cleanText = text.replace(/Radha Radha[.,! ]*/gi, "");
+  
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
-    contents: [{ parts: [{ text: `${prosodyPrefix}${text}` }] }],
+    contents: [{ parts: [{ text: `${prosodyPrefix}${cleanText}` }] }],
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: {
