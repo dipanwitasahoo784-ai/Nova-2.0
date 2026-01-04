@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { MessageRole, ChatMessage, SystemStats, AssistantState, Emotion, AppView, SubscriptionPlan, PLAN_DETAILS } from './types';
 import { connectLive, decode, decodeAudioData, encode, performSearchQuery, performThinkingQuery, performFastQuery, performOllamaQuery, generateSpeech } from './services/gemini';
 import { ICONS } from './constants';
@@ -427,6 +428,8 @@ const App: React.FC = () => {
         .bg-radial-gradient { background: radial-gradient(circle at center, #0d0d18 0%, #050508 100%); }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
       `}</style>
+      
+      <SpeedInsights />
     </div>
   );
 };
